@@ -328,12 +328,16 @@ full `launchOptions` including Chromium `args` (verified against
 stated: it stops the browser validating certificates for *every* site in that
 session, including the ones nhi-local blind-tunnels and never touches.
 
-**Implementation note.** Chromium's `--ignore-certificate-errors-spki-list`
-matches SPKI hashes against certificates in the chain. Verify during
-implementation whether it matches the CA's SPKI or only the leaf's. If only the
-leaf's, the single reused leaf key already makes one pin sufficient — pin the
-leaf's SPKI instead of the CA's. Either way one stable value works; this note
-only decides which one `ca --spki` prints.
+**Resolved during implementation (2026-09-10).** Chromium's
+`--ignore-certificate-errors-spki-list` matches the **leaf** certificate's SPKI
+only, never the CA's. Tested directly against Chromium with a locally minted
+chain: no pin and a CA-SPKI pin both fail with `ERR_CERT_AUTHORITY_INVALID`,
+while the leaf-SPKI pin loads the page.
+
+This promotes the reused-leaf-key decision from a convenience to a requirement:
+minting a fresh leaf key per hostname would force a separate pin per host, and
+the single-value recipe above would not exist. `ca --spki` prints the leaf
+SPKI.
 
 **Two gotchas that both fail silently and belong in the README:**
 
