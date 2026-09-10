@@ -82,49 +82,23 @@ node bin/nhi-proxy.ts ca --spki
 `setup` prompts only when stdin is a TTY; redirecting from `/dev/null` runs it
 from flags alone, which is also how the tests drive it.
 
-### Driving a real request through the proxy
-
-The steps above stop short of a working identity, because enrolling one needs
-a platform and an org admin. The e2e stack provides both, so you can play all
-three roles yourself and watch an unauthenticated `curl` come back
-authenticated.
+Once an admin has returned a `client_id` for a real platform, the rest is two
+commands and a request that carries no credential of its own:
 
 ```bash
-# 1. an isolated simple-directory to talk to
-npm run e2e-stack
+node bin/nhi-proxy.ts enroll nhi-V1StGXR8Z5
+node bin/nhi-proxy.ts serve &
 
-# 2. a scratch profile pointed at it
-export XDG_CONFIG_HOME=$(mktemp -d)
-eval "$(node test-e2e/seed.ts)"   # exports E2E_SITE, E2E_SD_PATH, E2E_ORG_ID, E2E_ADMIN_COOKIE
-node bin/nhi-proxy.ts setup --site "$E2E_SITE" --sd-path "$E2E_SD_PATH" \
-                           --profile dev < /dev/null
-
-# 3. play the org admin: register the identity nhi-proxy just generated
-ISSUER=$(node bin/nhi-proxy.ts status --profile dev | awk '/^issuer/{print $2}')
-SUBJECT=$(node bin/nhi-proxy.ts status --profile dev | awk '/^subject/{print $2}')
-JWKS=$(node bin/nhi-proxy.ts status --jwks --profile dev)
-CLIENT_ID=$(curl -s -X POST "$E2E_SITE$E2E_SD_PATH/api/organizations/$E2E_ORG_ID/nhis" \
-  -H 'content-type: application/json' -H "cookie: $E2E_ADMIN_COOKIE" \
-  -d "{\"name\":\"dev agent\",\"role\":\"admin\",\"subject\":\"$SUBJECT\",\"provider\":{\"issuer\":\"$ISSUER\",\"jwks\":$JWKS}}" \
-  | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).id")
-
-# 4. enrol it and start the proxy
-node bin/nhi-proxy.ts enroll "$CLIENT_ID" --profile dev
-node bin/nhi-proxy.ts serve --profile dev &
-
-# 5. a request carrying no credential of its own
-curl -s --noproxy '' --proxy http://127.0.0.1:7331 \
-  "$E2E_SITE$E2E_SD_PATH/api/auth/me"
+curl --proxy http://127.0.0.1:7331 \
+     --cacert "$(node bin/nhi-proxy.ts ca)" \
+     https://koumoul.com/simple-directory/api/auth/me
 ```
 
 ```json
 {
-  "id": "nhi-pXW8ve1vqE",
-  "email": "nhi-pXW8ve1vqE@nhi.localhost",
-  "name": "dev agent",
-  "organizations": [
-    { "id": "test_nhilocal", "name": "nhi-proxy e2e org", "role": "admin", "createdAt": "..." }
-  ],
+  "id": "nhi-V1StGXR8Z5",
+  "name": "my agent",
+  "organizations": [{ "id": "...", "name": "...", "role": "user" }],
   "ipa": 1,
   "nhi": 1,
   "exp": 1789052064,
@@ -133,22 +107,18 @@ curl -s --noproxy '' --proxy http://127.0.0.1:7331 \
 ```
 
 `nhi: 1` is the proof: simple-directory recognised the session as a non-human
-identity, and the curl command never saw a credential.
+identity, and curl never saw a credential. Swap the URL for any endpoint on
+that platform — `/data-fair/api/v1/datasets`, say — and it stays authenticated.
 
-**`--noproxy ''` is not optional here.** curl skips the proxy for `localhost`
-whenever `no_proxy` is set in your shell, and then quietly returns an anonymous
-response — a `200` with an empty body, which looks like a bug in nhi-proxy
-rather than a bypass. The flag beats the environment variable; note that
-setting `NO_PROXY=""` does *not* help, because curl reads the lowercase
-`no_proxy` first. Against an https platform you would also pass
-`--cacert "$(node bin/nhi-proxy.ts ca --profile dev)"`.
+`--cacert` is needed because the proxy terminates TLS for the target host with
+its own CA; `nhi-proxy ca` prints the path. Against a plain-http dev stack drop
+it, but add `--noproxy ''`: curl skips the proxy for `localhost` whenever
+`no_proxy` is set, and then quietly returns an anonymous `200` that reads as a
+bug rather than a bypass. Setting `NO_PROXY=""` does not help, because curl
+reads the lowercase `no_proxy` first.
 
-Clean up with:
-
-```bash
-kill %1                    # the proxy
-npm run e2e-stack-down
-```
+If you have no platform to point at, `npm run e2e` does all of the above
+against a throwaway simple-directory it brings up itself.
 
 ## Things to be careful about
 
