@@ -22,10 +22,21 @@ koumoul.com       https://koumoul.com          alban@thinkpad           7331  nh
 staging           https://staging.koumoul.com  alban@thinkpad           7333  not enrolled
 ```
 
-The first profile for a platform is named after its host; ports auto-assign
-from 7331 upward. Each profile serves its own identity from its own daemon, so
-run one `serve` per identity you want live and point each tool at the matching
-port.
+The first profile for a platform is named after its host. Each profile serves
+its own identity from its own daemon, so run one `serve` per identity you want
+live and point each tool at the matching port.
+
+**Ports are suggested, then fixed.** `setup` proposes the next number from 7331
+that no other profile claims and nothing on the machine is listening on; the
+interactive wizard shows it so you can pick your own, and `--port` sets it
+outright. Whatever you settle on is stored in the profile and never changes on
+its own, because tool configs hard-code it.
+
+That stability has one sharp edge worth knowing: **the numbers are reused**.
+Delete a profile and the next one you create can inherit its port, so a tool
+config left pointing there would then drive a different identity. If you delete
+a profile whose port is referenced anywhere, either update those configs or
+give the replacement an explicit `--port`.
 
 ### Adding a second NHI on the same platform
 

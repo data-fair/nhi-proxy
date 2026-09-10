@@ -176,3 +176,18 @@ test('a failed refresh returns 502 naming the cause, never an unauthenticated re
   assert.match(body, /clock is 5m00s ahead/)
   await proxy.close(); up.server.close()
 })
+
+// a listen failure must reach the caller: an unhandled 'error' event on the
+// server would take the whole process down with a stack trace
+test('startProxy rejects when the port is taken, instead of crashing', async () => {
+  const ca = await freshCa()
+  const squatter = net.createServer()
+  await new Promise<void>(resolve => squatter.listen(0, '127.0.0.1', resolve))
+  const taken = (squatter.address() as any).port
+
+  await assert.rejects(
+    startProxy({ port: taken, targetHost: 'site.example.com', ca, session: stubSession('x') as any }),
+    (err: any) => err.code === 'EADDRINUSE'
+  )
+  await new Promise<void>(resolve => squatter.close(() => resolve()))
+})

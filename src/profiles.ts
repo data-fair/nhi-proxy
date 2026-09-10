@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { configRoot, profileDir } from './paths.ts'
 import { readConfig, type NhiLocalConfig } from './config.ts'
 
@@ -67,9 +68,22 @@ export const defaultProfileName = async (site: string) => {
   return `${base}-${n}`
 }
 
-export const nextFreePort = async () => {
+/** can this port actually be bound on the loopback interface right now? */
+const bindable = (port: number) => new Promise<boolean>(resolve => {
+  const probe = createServer()
+  probe.once('error', () => resolve(false))
+  probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)))
+})
+
+/**
+ * The next port to suggest: sequential from 7331, skipping both ports another
+ * profile has claimed and ports something else on the machine is already
+ * listening on. The suggestion is stored in the profile, so it stays put
+ * afterwards — a tool config pointing at it keeps working.
+ */
+export const nextFreePort = async (start = 7331) => {
   const taken = new Set((await listProfiles()).map(p => p.config.port))
-  let port = 7331
-  while (taken.has(port)) port++
+  let port = start
+  while (taken.has(port) || !await bindable(port)) port++
   return port
 }

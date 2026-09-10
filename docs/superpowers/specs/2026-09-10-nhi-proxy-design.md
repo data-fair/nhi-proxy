@@ -265,9 +265,21 @@ The single-profile case is the common one and must not require ceremony; the
 multi-profile case must never guess, because guessing means sending an
 organization's credential at the wrong platform.
 
-**Ports auto-assign at setup**: 7331, then the lowest free port above it not
-already claimed in another profile's `config.json`. Each profile serves one
-target from its own daemon, so two profiles must never collide by accident.
+**Ports are suggested at setup and then fixed**: the lowest number from 7331 up
+that no other profile claims *and* that can actually be bound right now —
+probing matters, because suggesting an occupied port only defers the failure to
+`serve`. The interactive wizard offers it as a prompt default rather than
+imposing it, since the number ends up hard-coded in tool configs and the person
+pasting it there should choose it. It is stored in the profile and never
+changes on its own.
+
+**Accepted limitation: port numbers are reused.** Deleting a profile frees its
+number for the next one created, so a stale tool config could address a
+different identity. Deterministic derivation from the profile name would avoid
+it, at the cost of unmemorable ports; sequential-and-stored was chosen as the
+simpler model, and the risk is documented for users instead. `serve` failing
+with a named conflict rather than a raw `EADDRINUSE` is what keeps the
+*detectable* half of this honest.
 
 ### 7.2 Layout and configuration
 

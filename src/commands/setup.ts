@@ -127,7 +127,15 @@ export const runSetupWizard = async (opts: SetupOptions) => {
       const profile = (await rl.question(`Name for this identity [${defaultName}]: `)).trim() || defaultName
       const defaultSubject = `${userInfo().username}@${hostname()}`
       const subject = (await rl.question(`Subject (how the platform's admin will recognise it) [${defaultSubject}]: `)).trim() || defaultSubject
-      options = { ...opts, site, profile, subject }
+      // suggested, not imposed: the port ends up hard-coded in tool configs,
+      // so the person who will paste it there should get to choose it
+      const defaultPort = await nextFreePort()
+      const portAnswer = (await rl.question(`Local proxy port [${defaultPort}]: `)).trim()
+      const port = portAnswer ? Number(portAnswer) : defaultPort
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error(`"${portAnswer}" is not a valid port number`)
+      }
+      options = { ...opts, site, profile, subject, port }
     } finally {
       rl.close()
     }

@@ -3,6 +3,7 @@ import assert from 'node:assert'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:net'
 import {
   listProfiles, resolveProfile, profileNameForSite, nextFreePort, NoProfilesError
 } from './profiles.ts'
@@ -84,5 +85,17 @@ test('nextFreePort starts at 7331 and skips ports already claimed', async () => 
     b: cfg('https://b.example.com', 7332)
   })
   assert.equal(await nextFreePort(), 7333)
+  delete process.env.XDG_CONFIG_HOME
+})
+
+// suggesting a port that something else already holds only defers the failure
+// to `serve`, where it used to surface as a raw EADDRINUSE stack
+test('nextFreePort skips a port held by an unrelated process', async () => {
+  await withProfiles({})
+  const squatter = createServer()
+  await new Promise<void>(resolve => squatter.listen(7331, '127.0.0.1', resolve))
+  assert.equal(await nextFreePort(), 7332)
+  await new Promise<void>(resolve => squatter.close(() => resolve()))
+  assert.equal(await nextFreePort(), 7331, 'and offers it again once released')
   delete process.env.XDG_CONFIG_HOME
 })

@@ -6,7 +6,7 @@ import { loadCa, spkiPin } from '../ca.ts'
 import { SessionHolder } from '../session.ts'
 import { startProxy } from '../proxy.ts'
 import { wiringHelp, hardeningHelp } from '../wiring.ts'
-import { resolveProfile } from '../profiles.ts'
+import { listProfiles, resolveProfile } from '../profiles.ts'
 
 export const runServe = async (opts: { profile?: string, port?: number }) => {
   const profile = await resolveProfile(opts.profile)
@@ -20,14 +20,32 @@ export const runServe = async (opts: { profile?: string, port?: number }) => {
   const session = new SessionHolder({ config, key, kid })
   const targetUrl = new URL(config.site)
   const targetHost = targetUrl.hostname
-  const proxy = await startProxy({
-    port: opts.port ?? config.port,
-    targetHost,
-    targetSecure: targetUrl.protocol === 'https:',
-    targetPort: targetUrl.port ? Number(targetUrl.port) : undefined,
-    ca,
-    session
-  })
+  const port = opts.port ?? config.port
+  let proxy
+  try {
+    proxy = await startProxy({
+      port,
+      targetHost,
+      targetSecure: targetUrl.protocol === 'https:',
+      targetPort: targetUrl.port ? Number(targetUrl.port) : undefined,
+      ca,
+      session
+    })
+  } catch (err: any) {
+    // the common one by far: another profile already serving, or a leftover
+    // proxy from a previous run. A raw EADDRINUSE stack says none of that.
+    if (err?.code === 'EADDRINUSE') {
+      const others = (await listProfiles()).filter(p => p.name !== profile && p.config.port === port)
+      throw new Error(
+        `port ${port} is already in use, so profile "${profile}" cannot serve.\n` +
+        (others.length
+          ? `  profile "${others[0].name}" is configured for the same port — one of them needs a different one.\n`
+          : '  another process is on it — possibly a proxy left over from an earlier run.\n') +
+        `  Try \`nhi-proxy serve --profile ${profile} --port <n>\` for a one-off, or set it for good with \`nhi-proxy setup --rotate --profile ${profile} --port <n>\`.`
+      )
+    }
+    throw err
+  }
 
   const caPath = join(dir, 'ca.crt')
   const pin = spkiPin(ca)

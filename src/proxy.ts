@@ -139,7 +139,16 @@ export const startProxy = async (opts: ProxyOptions) => {
     ;(targetSecure ? mitm : plainMitm).emit('connection', clientSocket)
   })
 
-  await new Promise<void>(resolve => proxy.listen(opts.port, '127.0.0.1', resolve))
+  // surface a listen failure to the caller instead of crashing the process on
+  // an unhandled 'error' event
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => reject(err)
+    proxy.once('error', onError)
+    proxy.listen(opts.port, '127.0.0.1', () => {
+      proxy.removeListener('error', onError)
+      resolve()
+    })
+  })
   const port = (proxy.address() as net.AddressInfo).port
 
   return {
