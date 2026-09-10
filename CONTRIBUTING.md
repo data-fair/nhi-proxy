@@ -75,7 +75,8 @@ easiest way to confuse yourself.
 ### Against a scratch profile
 
 For poking at the CLI without a platform. `XDG_CONFIG_HOME` keeps it away from
-your real profiles:
+your real profiles — but **do not enrol a scratch profile against a real
+platform**: see the warning below.
 
 ```bash
 export XDG_CONFIG_HOME=$(mktemp -d)
@@ -90,8 +91,13 @@ from flags alone, which is also how the tests drive it.
 ### Against a real platform
 
 This one uses your real `~/.config/nhi-proxy`, so run it in a shell **without**
-the `XDG_CONFIG_HOME` override above — otherwise the profile you enrol will
-vanish with the temp directory.
+the `XDG_CONFIG_HOME` override above. Enrolling a profile that lives in a temp
+directory leaves you worse off than not enrolling at all: when the directory is
+cleared you lose the signing key, while the NHI stays registered in the
+organization bound to a key that no longer exists anywhere — an orphan only an
+admin can remove. If you have already done it, move the profile out (see
+[moving a profile](docs/usage.md#moving-or-backing-up-a-profile)) rather than
+enrolling a second one.
 
 ```bash
 node bin/nhi-proxy.ts setup --site https://koumoul.com

@@ -58,6 +58,24 @@ different identity, possibly in a different organization.
 nhi-proxy serve --profile koumoul-readonly
 ```
 
+### Moving or backing up a profile
+
+A profile is just a directory, and nothing inside it records where it lives:
+
+```bash
+mkdir -p ~/.config/nhi-proxy
+cp -a /path/to/old/nhi-proxy/koumoul.com ~/.config/nhi-proxy/
+```
+
+The issuer, subject, `client_id` and key all survive, so the NHI keeps working
+with no admin involvement. The CA file is byte-identical too — which means the
+**SPKI pin does not change**, and any Playwright config pinning it stays valid;
+only a `--cacert` path pointing at the old location needs updating.
+
+The same copy is your backup. Losing a profile means losing the only key its
+NHI trusts, and the identity has to be re-registered by an admin — so keep
+enrolled profiles somewhere durable, never under `/tmp`.
+
 ### Rotating a key
 
 ```bash
