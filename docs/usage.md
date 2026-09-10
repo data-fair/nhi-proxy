@@ -72,9 +72,9 @@ with no admin involvement. The CA file is byte-identical too — which means the
 **SPKI pin does not change**, and any Playwright config pinning it stays valid;
 only a `--cacert` path pointing at the old location needs updating.
 
-The same copy is your backup. Losing a profile means losing the only key its
-NHI trusts, and the identity has to be re-registered by an admin — so keep
-enrolled profiles somewhere durable, never under `/tmp`.
+The same copy is your backup, and it is worth having: losing a profile means
+losing the only key its NHI trusts, and the identity then has to be
+re-registered by an admin.
 
 ### Rotating a key
 

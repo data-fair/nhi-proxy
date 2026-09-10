@@ -69,44 +69,29 @@ four non-obvious things simple-directory needs to run standalone.
 
 ## Trying it by hand
 
-Two flows, and they want different config directories — mixing them is the
-easiest way to confuse yourself.
-
-### Against a scratch profile
-
-For poking at the CLI without a platform. `XDG_CONFIG_HOME` keeps it away from
-your real profiles — but **do not enrol a scratch profile against a real
-platform**: see the warning below.
+Make a profile the way a user would, and manage it yourself. A profile is just
+a directory under `~/.config/nhi-proxy`: `nhi-proxy profiles` lists what you
+have, `rm -r` on one removes it completely, and `--profile` picks between them
+once there is more than one.
 
 ```bash
-export XDG_CONFIG_HOME=$(mktemp -d)
-node bin/nhi-proxy.ts setup --site https://koumoul.com < /dev/null
+node bin/nhi-proxy.ts setup --site https://koumoul.com --profile dev
 node bin/nhi-proxy.ts profiles
-node bin/nhi-proxy.ts ca --spki
+node bin/nhi-proxy.ts ca --spki --profile dev
 ```
 
-`setup` prompts only when stdin is a TTY; redirecting from `/dev/null` runs it
-from flags alone, which is also how the tests drive it.
+`setup` prompts when stdin is a TTY; append `< /dev/null` to run it from flags
+alone, which is how the tests drive it.
 
-### Against a real platform
-
-This one uses your real `~/.config/nhi-proxy`, so run it in a shell **without**
-the `XDG_CONFIG_HOME` override above. Enrolling a profile that lives in a temp
-directory leaves you worse off than not enrolling at all: when the directory is
-cleared you lose the signing key, while the NHI stays registered in the
-organization bound to a key that no longer exists anywhere — an orphan only an
-admin can remove. If you have already done it, move the profile out (see
-[moving a profile](docs/usage.md#moving-or-backing-up-a-profile)) rather than
-enrolling a second one.
+It prints an issuer, a subject and a public JWKS. Hand those to an admin of
+your organization, who registers the NHI and returns its id. Then:
 
 ```bash
-node bin/nhi-proxy.ts setup --site https://koumoul.com
-# hand the printed issuer / subject / jwks to an org admin, then:
-node bin/nhi-proxy.ts enroll nhi-V1StGXR8Z5
-node bin/nhi-proxy.ts serve &
+node bin/nhi-proxy.ts enroll nhi-V1StGXR8Z5 --profile dev
+node bin/nhi-proxy.ts serve --profile dev &
 
 curl --proxy http://127.0.0.1:7331 \
-     --cacert ~/.config/nhi-proxy/koumoul.com/ca.crt \
+     --cacert ~/.config/nhi-proxy/dev/ca.crt \
      https://koumoul.com/simple-directory/api/auth/me
 ```
 
@@ -128,10 +113,9 @@ that platform — `/data-fair/api/v1/datasets`, say — and it stays authenticat
 
 `--cacert` is needed because the proxy terminates TLS for the target host with
 its own CA. `nhi-proxy ca` prints that path, but **do not inline it as
-`--cacert "$(nhi-proxy ca)"`**: when there is no profile yet the command writes
-its error to stderr and nothing to stdout, so curl receives an empty path and
-reports `error setting certificate file:` — which tells you nothing about the
-actual cause. Paste the path, or assign it first and check it.
+`--cacert "$(nhi-proxy ca)"`**: if the command fails it writes to stderr and
+nothing to stdout, so curl receives an empty path and reports `error setting
+certificate file:` — which tells you nothing about the actual cause.
 
 Against a plain-http dev stack, drop `--cacert` but add `--noproxy ''`: curl
 skips the proxy for `localhost` whenever `no_proxy` is set, then quietly
