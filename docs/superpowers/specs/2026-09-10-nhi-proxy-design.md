@@ -372,8 +372,10 @@ SPKI.
 
 - **`no_proxy` normally contains `localhost`.** curl and most HTTP clients
   bypass a proxy for localhost, so a `http://localhost:5600` dev-stack target
-  receives no injected cookies and merely looks logged out. The dev recipe must
-  set `NO_PROXY=""` explicitly.
+  receives no injected cookies and merely looks logged out. Verified during
+  implementation: `NO_PROXY=""` does **not** fix it, because curl reads the
+  lowercase `no_proxy` first. The dev recipe uses curl's `--noproxy ''` flag,
+  which beats the environment; clearing both variables also works.
 - **Chromium also bypasses localhost** unless told otherwise; the dev recipe
   needs `--proxy-bypass` adjusted accordingly.
 

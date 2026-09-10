@@ -134,8 +134,11 @@ the pin.
 
 - **`no_proxy` normally contains `localhost`.** curl and most HTTP clients
   bypass a proxy for localhost, so a `http://localhost:5600` dev-stack target
-  receives no injected cookies and merely looks logged out. Set `NO_PROXY=""`
-  explicitly for that case.
+  receives no injected cookies and merely looks logged out — a `200` with an
+  anonymous body, which reads as a bug in nhi-proxy rather than a bypass. For
+  curl, pass `--noproxy ''`; the flag beats the environment. Setting
+  `NO_PROXY=""` is **not** enough, because curl reads the lowercase `no_proxy`
+  first — clear both (`no_proxy= NO_PROXY= curl ...`) if you must use variables.
 - **Chromium also bypasses localhost.** Adjust `--proxy-bypass` when targeting a
   local dev stack.
 
