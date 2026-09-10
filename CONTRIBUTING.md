@@ -69,8 +69,13 @@ four non-obvious things simple-directory needs to run standalone.
 
 ## Trying it by hand
 
-Point `XDG_CONFIG_HOME` at a scratch directory so you never touch your real
-profiles:
+Two flows, and they want different config directories — mixing them is the
+easiest way to confuse yourself.
+
+### Against a scratch profile
+
+For poking at the CLI without a platform. `XDG_CONFIG_HOME` keeps it away from
+your real profiles:
 
 ```bash
 export XDG_CONFIG_HOME=$(mktemp -d)
@@ -82,15 +87,20 @@ node bin/nhi-proxy.ts ca --spki
 `setup` prompts only when stdin is a TTY; redirecting from `/dev/null` runs it
 from flags alone, which is also how the tests drive it.
 
-Once an admin has returned a `client_id` for a real platform, the rest is two
-commands and a request that carries no credential of its own:
+### Against a real platform
+
+This one uses your real `~/.config/nhi-proxy`, so run it in a shell **without**
+the `XDG_CONFIG_HOME` override above — otherwise the profile you enrol will
+vanish with the temp directory.
 
 ```bash
+node bin/nhi-proxy.ts setup --site https://koumoul.com
+# hand the printed issuer / subject / jwks to an org admin, then:
 node bin/nhi-proxy.ts enroll nhi-V1StGXR8Z5
 node bin/nhi-proxy.ts serve &
 
 curl --proxy http://127.0.0.1:7331 \
-     --cacert "$(node bin/nhi-proxy.ts ca)" \
+     --cacert ~/.config/nhi-proxy/koumoul.com/ca.crt \
      https://koumoul.com/simple-directory/api/auth/me
 ```
 
@@ -111,11 +121,16 @@ identity, and curl never saw a credential. Swap the URL for any endpoint on
 that platform — `/data-fair/api/v1/datasets`, say — and it stays authenticated.
 
 `--cacert` is needed because the proxy terminates TLS for the target host with
-its own CA; `nhi-proxy ca` prints the path. Against a plain-http dev stack drop
-it, but add `--noproxy ''`: curl skips the proxy for `localhost` whenever
-`no_proxy` is set, and then quietly returns an anonymous `200` that reads as a
-bug rather than a bypass. Setting `NO_PROXY=""` does not help, because curl
-reads the lowercase `no_proxy` first.
+its own CA. `nhi-proxy ca` prints that path, but **do not inline it as
+`--cacert "$(nhi-proxy ca)"`**: when there is no profile yet the command writes
+its error to stderr and nothing to stdout, so curl receives an empty path and
+reports `error setting certificate file:` — which tells you nothing about the
+actual cause. Paste the path, or assign it first and check it.
+
+Against a plain-http dev stack, drop `--cacert` but add `--noproxy ''`: curl
+skips the proxy for `localhost` whenever `no_proxy` is set, then quietly
+returns an anonymous `200` that reads as a bug rather than a bypass. Setting
+`NO_PROXY=""` does not help, because curl reads the lowercase `no_proxy` first.
 
 If you have no platform to point at, `npm run e2e` does all of the above
 against a throwaway simple-directory it brings up itself.
