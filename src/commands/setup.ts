@@ -124,9 +124,9 @@ export const runSetupWizard = async (opts: SetupOptions) => {
     try {
       const site = (await rl.question(`Platform URL [${DEFAULT_SITE}]: `)).trim() || DEFAULT_SITE
       const defaultName = await defaultProfileName(new URL(site).origin)
-      const profile = (await rl.question(`Profile name [${defaultName}]: `)).trim() || defaultName
+      const profile = (await rl.question(`Name for this identity [${defaultName}]: `)).trim() || defaultName
       const defaultSubject = `${userInfo().username}@${hostname()}`
-      const subject = (await rl.question(`Subject (identifies this machine) [${defaultSubject}]: `)).trim() || defaultSubject
+      const subject = (await rl.question(`Subject (how the platform's admin will recognise it) [${defaultSubject}]: `)).trim() || defaultSubject
       options = { ...opts, site, profile, subject }
     } finally {
       rl.close()

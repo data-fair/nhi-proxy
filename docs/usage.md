@@ -16,22 +16,32 @@ complete uninstall.
 
 ```bash
 $ nhi-proxy profiles
-PROFILE           PLATFORM              SUBJECT         PORT  NHI
-koumoul-readonly  https://koumoul.com   alban@thinkpad  7332  nhi-8kQm2LpXsA
-koumoul.com       https://koumoul.com   alban@thinkpad  7331  nhi-V1StGXR8Z5
-staging           https://staging.koumoul.com  alban@thinkpad  7333  not enrolled
+PROFILE           PLATFORM                     SUBJECT                  PORT  NHI
+koumoul-readonly  https://koumoul.com          readonly-agent@thinkpad  7332  nhi-8kQm2LpXsA
+koumoul.com       https://koumoul.com          alban@thinkpad           7331  nhi-V1StGXR8Z5
+staging           https://staging.koumoul.com  alban@thinkpad           7333  not enrolled
 ```
 
 The first profile for a platform is named after its host; ports auto-assign
-from 7331 upward.
+from 7331 upward. Each profile serves its own identity from its own daemon, so
+run one `serve` per identity you want live and point each tool at the matching
+port.
 
 ### Adding a second NHI on the same platform
 
 Name it yourself:
 
 ```bash
-nhi-proxy setup --site https://koumoul.com --profile koumoul-readonly
+nhi-proxy setup --site https://koumoul.com \
+                --profile koumoul-readonly \
+                --subject readonly-agent@thinkpad
 ```
+
+Give it a `--subject` too. It defaults to `<user>@<hostname>`, which is fine
+for a first identity but leaves two of them looking alike in the admin's list —
+and the subject is the label whoever approves the NHI actually sees. It is also
+half of the `(issuer, subject)` pair the platform binds, so it is fixed at
+creation: changing it later means an admin patches the binding.
 
 Re-running `setup --site <platform>` without `--profile` is refused rather than
 quietly enrolling a second NHI, since that is far more often a mistake than an
