@@ -19,6 +19,16 @@ test('ensureProfileDir creates the directory mode 0700', async () => {
   delete process.env.XDG_CONFIG_HOME
 })
 
+// the root holds every profile name; a recursive mkdir would leave it at
+// 0777 & ~umask, so it is created and tightened explicitly
+test('the config root is 0700, not just the profile directory', async () => {
+  process.env.XDG_CONFIG_HOME = await mkdtemp(join(tmpdir(), 'nhi-'))
+  await ensureProfileDir('koumoul.com')
+  const root = join(process.env.XDG_CONFIG_HOME, 'nhi-proxy')
+  assert.equal((await stat(root)).mode & 0o777, 0o700)
+  delete process.env.XDG_CONFIG_HOME
+})
+
 test('writeSecret writes mode 0600 and round-trips', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'nhi-'))
   await writeSecret(dir, 'key.jwk', '{"kty":"EC"}')

@@ -1,9 +1,11 @@
-import { profileDir } from '../paths.ts'
+import { join } from 'node:path'
+import { configRoot, profileDir } from '../paths.ts'
 import { readConfig } from '../config.ts'
 import { loadSigningKey } from '../keys.ts'
 import { loadCa, spkiPin } from '../ca.ts'
 import { SessionHolder } from '../session.ts'
 import { startProxy } from '../proxy.ts'
+import { wiringHelp, hardeningHelp } from '../wiring.ts'
 import { resolveProfile } from '../profiles.ts'
 
 export const runServe = async (opts: { profile?: string, port?: number }) => {
@@ -27,11 +29,22 @@ export const runServe = async (opts: { profile?: string, port?: number }) => {
     session
   })
 
-  console.log(`nhi-proxy proxying ${targetHost} on http://127.0.0.1:${proxy.port}`)
+  const caPath = join(dir, 'ca.crt')
+  const pin = spkiPin(ca)
+  console.log(`nhi-proxy proxying ${targetHost} on http://127.0.0.1:${proxy.port} as ${config.clientId}`)
   console.log(`  profile   ${profile}`)
-  console.log(`  CA        ${dir}/ca.crt`)
-  console.log(`  SPKI pin  ${spkiPin(ca)}`)
+  console.log(`  CA        ${caPath}`)
+  console.log(`  SPKI pin  ${pin}`)
   console.log('Every other host is tunnelled untouched.')
+  console.log(wiringHelp({
+    port: proxy.port,
+    targetHost: targetUrl.host,
+    secure: targetUrl.protocol === 'https:',
+    caPath,
+    spkiPin: pin,
+    sdPath: config.sdPath
+  }))
+  console.log(hardeningHelp(configRoot()))
 
   const shutdown = () => { proxy.close().then(() => process.exit(0), () => process.exit(1)) }
   process.on('SIGINT', shutdown)
