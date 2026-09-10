@@ -10,7 +10,7 @@ import {
 const cfg = (site: string, port: number) => JSON.stringify({
   site,
   sdPath: '/simple-directory',
-  issuer: 'https://nhi-local.data-fair.cloud/x',
+  issuer: 'https://nhi-proxy.data-fair.cloud/x',
   subject: 'a@b',
   port
 })
@@ -19,7 +19,7 @@ const withProfiles = async (profiles: Record<string, string>) => {
   const root = await mkdtemp(join(tmpdir(), 'nhi-'))
   process.env.XDG_CONFIG_HOME = root
   for (const [name, content] of Object.entries(profiles)) {
-    const dir = join(root, 'nhi-local', name)
+    const dir = join(root, 'nhi-proxy', name)
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, 'config.json'), content)
   }
@@ -34,7 +34,7 @@ test('profileNameForSite derives a filesystem-safe name from the host', () => {
 
 test('a directory without config.json is not a profile', async () => {
   const root = await withProfiles({ 'koumoul.com': cfg('https://koumoul.com', 7331) })
-  await mkdir(join(root, 'nhi-local', 'leftover'), { recursive: true })
+  await mkdir(join(root, 'nhi-proxy', 'leftover'), { recursive: true })
   assert.deepEqual((await listProfiles()).map(p => p.name), ['koumoul.com'])
   delete process.env.XDG_CONFIG_HOME
 })

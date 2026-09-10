@@ -1,6 +1,6 @@
 # Security
 
-What nhi-local defends against, and how to keep its signing key away from the
+What nhi-proxy defends against, and how to keep its signing key away from the
 agent it serves.
 
 ## What it guarantees
@@ -26,7 +26,7 @@ increasing strength.
 Claude Code, in `~/.claude/settings.json`:
 
 ```json
-{ "permissions": { "deny": ["Read(~/.config/nhi-local/**)"] } }
+{ "permissions": { "deny": ["Read(~/.config/nhi-proxy/**)"] } }
 ```
 
 In *user* settings a bare `Read(/foo/**)` resolves against `~/.claude`, so the
@@ -36,7 +36,7 @@ opencode, in `~/.config/opencode/opencode.json` — last matching rule wins, so
 the catch-all goes first:
 
 ```json
-{ "permission": { "read": { "*": "allow", "~/.config/nhi-local/*": "deny" } } }
+{ "permission": { "read": { "*": "allow", "~/.config/nhi-proxy/*": "deny" } } }
 ```
 
 These are guardrails, not boundaries. Claude Code's docs name the holes: the
@@ -51,7 +51,7 @@ sandboxed Bash command *and its child processes*:
 
 ```json
 { "sandbox": { "credentials": { "files": [
-  { "path": "~/.config/nhi-local", "mode": "deny" }
+  { "path": "~/.config/nhi-proxy", "mode": "deny" }
 ] } } }
 ```
 
@@ -67,16 +67,16 @@ that holds regardless of which harness is running, including one nobody
 configured.
 
 ```ini
-# /etc/systemd/system/nhi-local.service
+# /etc/systemd/system/nhi-proxy.service
 [Unit]
-Description=nhi-local NHI credential proxy
+Description=nhi-proxy NHI credential proxy
 After=network.target
 
 [Service]
-User=nhi-local
-Group=nhi-local
-Environment=XDG_CONFIG_HOME=/var/lib/nhi-local/.config
-ExecStart=/usr/bin/npx @data-fair/nhi-local serve --profile koumoul.com
+User=nhi-proxy
+Group=nhi-proxy
+Environment=XDG_CONFIG_HOME=/var/lib/nhi-proxy/.config
+ExecStart=/usr/bin/npx @data-fair/nhi-proxy serve --profile koumoul.com
 Restart=on-failure
 
 [Install]
@@ -94,5 +94,5 @@ WantedBy=multi-user.target
 ## See also
 
 - [Usage guide](usage.md)
-- [Design spec](superpowers/specs/2026-09-10-nhi-local-design.md), whose
+- [Design spec](superpowers/specs/2026-09-10-nhi-proxy-design.md), whose
   threat-model section is the authoritative version of the above

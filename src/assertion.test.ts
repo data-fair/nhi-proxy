@@ -31,13 +31,13 @@ test('an assertion verifies under simple-directory verification options', async 
   const assertion = await mintAssertion({
     key,
     kid,
-    issuer: 'https://nhi-local.data-fair.cloud/9f3c1a',
+    issuer: 'https://nhi-proxy.data-fair.cloud/9f3c1a',
     subject: 'alban@thinkpad',
     audience: 'https://koumoul.com'
   })
   assert.equal(decodeProtectedHeader(assertion).alg, 'ES256')
   const { payload } = await jwtVerify(assertion, createLocalJWKSet(jwks as any), {
-    issuer: 'https://nhi-local.data-fair.cloud/9f3c1a',
+    issuer: 'https://nhi-proxy.data-fair.cloud/9f3c1a',
     audience: 'https://koumoul.com',
     subject: 'alban@thinkpad',
     requiredClaims: ['exp', 'sub', 'iat']

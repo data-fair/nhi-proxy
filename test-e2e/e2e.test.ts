@@ -37,7 +37,7 @@ before(async () => {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: ADMIN_COOKIE },
     body: JSON.stringify({
-      name: 'nhi-local e2e',
+      name: 'nhi-proxy e2e',
       role: 'user',
       subject: setup.subject,
       provider: { issuer: setup.issuer, jwks: await publicJwks(profileDir(profile)) }
@@ -75,7 +75,7 @@ test('a request through the proxy is authenticated as the NHI', async () => {
   const res = await fetch(`${SITE}${SD_PATH}/api/auth/me`, {
     dispatcher: new ProxyAgent(`http://127.0.0.1:${proxy.port}`)
   } as any)
-  // read once: a 502 from nhi-local carries the diagnosis in its body
+  // read once: a 502 from nhi-proxy carries the diagnosis in its body
   const raw = await res.text()
   assert.equal(res.status, 200, `proxy returned ${res.status}: ${raw}`)
   const me = JSON.parse(raw)

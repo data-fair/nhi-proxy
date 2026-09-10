@@ -23,7 +23,7 @@ export const diagnose = (ctx: ExchangeContext): string => {
     return 'Hit simple-directory\'s auth rate limit. It consumes a point on every exchange, successful or not, and is keyed by both your IP and your client_id. Wait and retry; if this recurs, an operator may need to raise authRateLimit.'
   }
   if (!ctx.clientId) {
-    return 'No client_id configured — run `nhi-local enroll <client_id>` with the id your org admin returned.'
+    return 'No client_id configured — run `nhi-proxy enroll <client_id>` with the id your org admin returned.'
   }
   if (ctx.dateHeader) {
     const serverMs = Date.parse(ctx.dateHeader)
@@ -39,7 +39,7 @@ export const diagnose = (ctx: ExchangeContext): string => {
     `Exchange rejected by ${ctx.site} (simple-directory returns the same 401 for every cause, so check each):`,
     `  - is client_id ${ctx.clientId} the exact id your admin returned?`,
     `  - is the site "${ctx.site}" byte-for-byte the origin the NHI was created for? it is the assertion audience`,
-    '  - does the binding\'s inline JWKS still match this profile\'s key? re-paste `nhi-local status --jwks` if the key was rotated',
+    '  - does the binding\'s inline JWKS still match this profile\'s key? re-paste `nhi-proxy status --jwks` if the key was rotated',
     '  - was the NHI deleted or moved to another organization?'
   ].join('\n')
 }

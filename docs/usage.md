@@ -1,4 +1,4 @@
-# Using nhi-local
+# Using nhi-proxy
 
 Everything beyond [getting started](../README.md): profiles, wiring each tool,
 and what to do when something fails.
@@ -11,11 +11,11 @@ per machine — and each gets its own profile, its own signing key, its own
 issuer and its own port.
 
 The filesystem is the list: a profile is any directory under
-`~/.config/nhi-local/` containing a `config.json`, so `rm -r` on one is a
+`~/.config/nhi-proxy/` containing a `config.json`, so `rm -r` on one is a
 complete uninstall.
 
 ```bash
-$ nhi-local profiles
+$ nhi-proxy profiles
 PROFILE           PLATFORM              SUBJECT         PORT  NHI
 koumoul-readonly  https://koumoul.com   alban@thinkpad  7332  nhi-8kQm2LpXsA
 koumoul.com       https://koumoul.com   alban@thinkpad  7331  nhi-V1StGXR8Z5
@@ -30,7 +30,7 @@ from 7331 upward.
 Name it yourself:
 
 ```bash
-nhi-local setup --site https://koumoul.com --profile koumoul-readonly
+nhi-proxy setup --site https://koumoul.com --profile koumoul-readonly
 ```
 
 Re-running `setup --site <platform>` without `--profile` is refused rather than
@@ -45,19 +45,19 @@ command requires it and refuses to guess — a wrong guess would act as a
 different identity, possibly in a different organization.
 
 ```bash
-nhi-local serve --profile koumoul-readonly
+nhi-proxy serve --profile koumoul-readonly
 ```
 
 ### Rotating a key
 
 ```bash
-nhi-local setup --rotate --profile koumoul-readonly
+nhi-proxy setup --rotate --profile koumoul-readonly
 ```
 
 This replaces the signing key and leaves everything else alone: the same
 `client_id`, issuer, platform and port, and the same local CA — so every tool
 you have already wired keeps working. Give the admin the new JWKS
-(`nhi-local status --jwks`) to paste onto the existing NHI. `--rotate` never
+(`nhi-proxy status --jwks`) to paste onto the existing NHI. `--rotate` never
 creates a profile.
 
 ## Wiring your tools
@@ -65,10 +65,10 @@ creates a profile.
 Start the proxy, which prints everything the recipes below need:
 
 ```bash
-$ nhi-local serve
-nhi-local proxying koumoul.com on http://127.0.0.1:7331
+$ nhi-proxy serve
+nhi-proxy proxying koumoul.com on http://127.0.0.1:7331
   profile   koumoul.com
-  CA        ~/.config/nhi-local/koumoul.com/ca.crt
+  CA        ~/.config/nhi-proxy/koumoul.com/ca.crt
   SPKI pin  L8T9NCyb5ipq6Wjzg0pUpRRwKuiLUOje8a9e2YBw7lY=
 Every other host is tunnelled untouched.
 ```
@@ -77,7 +77,7 @@ Every other host is tunnelled untouched.
 
 ```bash
 curl --proxy http://127.0.0.1:7331 \
-     --cacert ~/.config/nhi-local/koumoul.com/ca.crt \
+     --cacert ~/.config/nhi-proxy/koumoul.com/ca.crt \
      https://koumoul.com/data-fair/api/v1/datasets
 ```
 
@@ -85,7 +85,7 @@ curl --proxy http://127.0.0.1:7331 \
 
 ```bash
 export HTTPS_PROXY=http://127.0.0.1:7331
-export NODE_EXTRA_CA_CERTS=~/.config/nhi-local/koumoul.com/ca.crt
+export NODE_EXTRA_CA_CERTS=~/.config/nhi-proxy/koumoul.com/ca.crt
 ```
 
 ### Playwright MCP
@@ -97,7 +97,7 @@ Preferred form — pins one key rather than disabling certificate validation:
   "browser": {
     "launchOptions": {
       "proxy": { "server": "http://127.0.0.1:7331" },
-      "args": ["--ignore-certificate-errors-spki-list=<nhi-local ca --spki>"]
+      "args": ["--ignore-certificate-errors-spki-list=<nhi-proxy ca --spki>"]
     }
   }
 }
@@ -109,15 +109,15 @@ npx @playwright/mcp@latest --config ./playwright-mcp.json
 
 The fallback is `--proxy-server=http://127.0.0.1:7331 --ignore-https-errors`.
 **Know its cost:** it stops the browser validating certificates for *every* site
-in that session, including the ones nhi-local tunnels and never touches. Prefer
+in that session, including the ones nhi-proxy tunnels and never touches. Prefer
 the pin.
 
 > **Why one pin covers every host.** Chromium's
 > `--ignore-certificate-errors-spki-list` matches the **leaf** certificate's
 > public key, not the CA's — verified directly against Chromium: pinning the CA's
 > SPKI is rejected with `ERR_CERT_AUTHORITY_INVALID`, pinning the leaf's is
-> accepted. nhi-local therefore mints every certificate from a *single reused
-> leaf keypair*, so `nhi-local ca --spki` prints one stable value that works for
+> accepted. nhi-proxy therefore mints every certificate from a *single reused
+> leaf keypair*, so `nhi-proxy ca --spki` prints one stable value that works for
 > every host the proxy ever presents.
 
 ### Two gotchas that fail silently
@@ -133,7 +133,7 @@ the pin.
 
 simple-directory answers **every** exchange failure with an identical
 `401 invalid credentials`, deliberately, so it cannot be used as an oracle for
-which check failed. `nhi-local` therefore diagnoses locally and tells you what
+which check failed. `nhi-proxy` therefore diagnoses locally and tells you what
 to check.
 
 | What you see | What it means |
@@ -142,13 +142,13 @@ to check.
 | `Hit simple-directory's auth rate limit` | The limiter consumes a point on *every* exchange, keyed by IP and by client_id. Wait; if it recurs, an operator may need to raise `authRateLimit`. |
 | `Local clock is 4m12s ahead of …` | Assertions live 120s, so drift alone rejects every exchange. Fix the system clock. |
 | `Exchange rejected by … (same 401 for every cause)` | Work the printed checklist: client_id, site origin, JWKS still matching, NHI still present. |
-| `nhi-local: …` in an HTTP 502 | A refresh failed mid-session. The proxy never forwards unauthenticated, so the cause is in the body. |
+| `nhi-proxy: …` in an HTTP 502 | A refresh failed mid-session. The proxy never forwards unauthenticated, so the cause is in the body. |
 
-After rotating a key with `nhi-local setup --rotate`, re-print the JWKS for your
-admin with `nhi-local status --jwks`. Inline JWKS has no refetch mechanism, so
+After rotating a key with `nhi-proxy setup --rotate`, re-print the JWKS for your
+admin with `nhi-proxy status --jwks`. Inline JWKS has no refetch mechanism, so
 the admin must update the binding by hand.
 
 ## See also
 
 - [Security and key protection](security.md)
-- [Design spec](superpowers/specs/2026-09-10-nhi-local-design.md)
+- [Design spec](superpowers/specs/2026-09-10-nhi-proxy-design.md)

@@ -45,7 +45,7 @@ export const startProxy = async (opts: ProxyOptions) => {
       // never forward unauthenticated: data-fair would answer 401 or a
       // logged-out HTML page and an agent would burn tokens interpreting it
       res.writeHead(502, { 'content-type': 'text/plain' })
-      res.end(`nhi-local: ${err.message}\n`)
+      res.end(`nhi-proxy: ${err.message}\n`)
       return
     }
 
@@ -69,7 +69,7 @@ export const startProxy = async (opts: ProxyOptions) => {
     })
     upstream.on('error', err => {
       res.writeHead(502, { 'content-type': 'text/plain' })
-      res.end(`nhi-local: upstream request failed: ${err.message}\n`)
+      res.end(`nhi-proxy: upstream request failed: ${err.message}\n`)
     })
     req.pipe(upstream)
   }
@@ -104,7 +104,7 @@ export const startProxy = async (opts: ProxyOptions) => {
     }
     if (host !== targetHost) {
       res.writeHead(502, { 'content-type': 'text/plain' })
-      res.end(`nhi-local: this proxy only serves ${targetHost}\n`)
+      res.end(`nhi-proxy: this proxy only serves ${targetHost}\n`)
       return
     }
     try {

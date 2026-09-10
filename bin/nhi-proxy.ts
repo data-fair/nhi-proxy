@@ -8,16 +8,16 @@ import { runCa } from '../src/commands/ca.ts'
 import { runProfiles } from '../src/commands/profiles.ts'
 import { listProfiles, NoProfilesError } from '../src/profiles.ts'
 
-const USAGE = `nhi-local — local NHI credential provider for agentic coding tools
+const USAGE = `nhi-proxy — local NHI credential provider for agentic coding tools
 
-  nhi-local                       set up on first run, then serve
-  nhi-local setup [--site <origin>] [--profile <p>] [--subject <s>]
+  nhi-proxy                       set up on first run, then serve
+  nhi-proxy setup [--site <origin>] [--profile <p>] [--subject <s>]
                   [--sd-path <p>] [--port <n>] [--rotate]
-  nhi-local enroll <client_id> [--profile <p>]
-  nhi-local serve [--port <n>] [--profile <p>]
-  nhi-local status [--jwks] [--profile <p>]
-  nhi-local ca [--spki] [--profile <p>]
-  nhi-local profiles
+  nhi-proxy enroll <client_id> [--profile <p>]
+  nhi-proxy serve [--port <n>] [--profile <p>]
+  nhi-proxy status [--jwks] [--profile <p>]
+  nhi-proxy ca [--spki] [--profile <p>]
+  nhi-proxy profiles
 
 A profile is one NHI. Several NHIs on the same platform each get their own,
 named with --profile. With one profile configured, --profile can be omitted
@@ -42,7 +42,7 @@ const { values, positionals } = parseArgs({
 const [command, arg] = positionals
 const port = values.port ? Number(values.port) : undefined
 
-// bare `nhi-local` does the next useful thing, so a first-time user who types
+// bare `nhi-proxy` does the next useful thing, so a first-time user who types
 // the name and nothing else is carried from setup to a running proxy
 const runBare = async () => {
   const profiles = await listProfiles()
@@ -69,7 +69,7 @@ try {
       rotate: values.rotate
     })
   } else if (command === 'enroll') {
-    if (!arg) throw new Error('enroll requires a client_id, e.g. `nhi-local enroll nhi-V1StGXR8Z5`')
+    if (!arg) throw new Error('enroll requires a client_id, e.g. `nhi-proxy enroll nhi-V1StGXR8Z5`')
     await runEnroll(arg, values.profile)
   } else if (command === 'serve') await runServe({ profile: values.profile, port })
   else if (command === 'status') await runStatus({ profile: values.profile, jwks: values.jwks })
@@ -77,7 +77,7 @@ try {
   else if (command === 'profiles') await runProfiles()
   else throw new Error(`unknown command "${command}"\n\n${USAGE}`)
 } catch (err: any) {
-  if (err instanceof NoProfilesError) console.error('No profile configured. Run `nhi-local setup`.')
+  if (err instanceof NoProfilesError) console.error('No profile configured. Run `nhi-proxy setup`.')
   else console.error(err.message)
   process.exit(1)
 }

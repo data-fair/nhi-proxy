@@ -3,7 +3,7 @@ import { listProfiles } from '../profiles.ts'
 export const runProfiles = async () => {
   const profiles = await listProfiles()
   if (!profiles.length) {
-    console.log('No profiles configured. Run `nhi-local setup`.')
+    console.log('No profiles configured. Run `nhi-proxy setup`.')
     return
   }
   // one profile is one NHI, and several may share a platform, so the subject

@@ -21,7 +21,7 @@ export const generateCa = async (dir: string) => {
   ca.serialNumber = serial()
   ca.validity.notBefore = new Date(Date.now() - 60_000)
   ca.validity.notAfter = new Date(Date.now() + 10 * 365 * 24 * 3600_000)
-  const caName = [{ name: 'commonName', value: 'nhi-local local CA' }]
+  const caName = [{ name: 'commonName', value: 'nhi-proxy local CA' }]
   ca.setSubject(caName)
   ca.setIssuer(caName)
   ca.setExtensions([

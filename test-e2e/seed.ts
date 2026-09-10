@@ -8,7 +8,7 @@
  */
 import { MongoClient } from 'mongodb'
 
-const MONGO = process.env.E2E_MONGO_URL ?? 'mongodb://localhost:27317/nhi-local-e2e'
+const MONGO = process.env.E2E_MONGO_URL ?? 'mongodb://localhost:27317/nhi-proxy-e2e'
 const SITE = process.env.E2E_SITE ?? 'http://localhost:5690'
 const SD_PATH = process.env.E2E_SD_PATH ?? '/simple-directory'
 
@@ -22,7 +22,7 @@ const db = client.db()
 
 await db.collection('organizations').replaceOne(
   { _id: ORG_ID as any },
-  { _id: ORG_ID, name: 'nhi-local e2e org', created: { id: ADMIN_EMAIL, name: 'seed', date: new Date().toISOString() } } as any,
+  { _id: ORG_ID, name: 'nhi-proxy e2e org', created: { id: ADMIN_EMAIL, name: 'seed', date: new Date().toISOString() } } as any,
   { upsert: true }
 )
 
@@ -36,7 +36,7 @@ await db.collection('users').replaceOne(
     name: 'NHI Admin',
     emailConfirmed: true,
     password: { clear: ADMIN_PASSWORD },
-    organizations: [{ id: ORG_ID, name: 'nhi-local e2e org', role: 'admin' }]
+    organizations: [{ id: ORG_ID, name: 'nhi-proxy e2e org', role: 'admin' }]
   } as any,
   { upsert: true }
 )

@@ -36,7 +36,7 @@ const holderFor = async (origin: string) => {
       sdPath: '',
       clientId: 'nhi-test01',
       port: 7331,
-      issuer: 'https://nhi-local.data-fair.cloud/test',
+      issuer: 'https://nhi-proxy.data-fair.cloud/test',
       subject: 'test@host'
     },
     key,
@@ -111,7 +111,7 @@ test('an exchange writes nothing to the profile directory', async () => {
       sdPath: '',
       clientId: 'nhi-test01',
       port: 7331,
-      issuer: 'https://nhi-local.data-fair.cloud/test',
+      issuer: 'https://nhi-proxy.data-fair.cloud/test',
       subject: 'test@host'
     },
     key,

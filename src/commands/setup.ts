@@ -53,7 +53,7 @@ const createProfile = async (opts: SetupOptions) => {
   if (clash) {
     throw new Error(opts.profile
       ? `profile "${profile}" already exists (${clash.config.site}). Choose another --profile name, or use --rotate to replace its key.`
-      : `profile "${profile}" already exists (${clash.config.site}). Each NHI gets its own profile, so name this one explicitly:\n  nhi-local setup --site ${site} --profile <name>\nTo replace the key of the existing NHI instead, use --rotate.`)
+      : `profile "${profile}" already exists (${clash.config.site}). Each NHI gets its own profile, so name this one explicitly:\n  nhi-proxy setup --site ${site} --profile <name>\nTo replace the key of the existing NHI instead, use --rotate.`)
   }
 
   const dir = await ensureProfileDir(profile)
@@ -62,7 +62,7 @@ const createProfile = async (opts: SetupOptions) => {
   await writeConfig(profile, {
     site,
     sdPath: opts.sdPath ?? '/simple-directory',
-    issuer: `https://nhi-local.data-fair.cloud/${randomBytes(4).toString('hex')}`,
+    issuer: `https://nhi-proxy.data-fair.cloud/${randomBytes(4).toString('hex')}`,
     subject: opts.subject ?? `${userInfo().username}@${hostname()}`,
     port: opts.port ?? await nextFreePort()
   })
@@ -138,7 +138,7 @@ export const runSetupWizard = async (opts: SetupOptions) => {
   printAdminBlock(out)
 
   if (!interactive) {
-    console.log(`\nWhen your admin returns the id:  nhi-local enroll <client_id> --profile ${out.profile}`)
+    console.log(`\nWhen your admin returns the id:  nhi-proxy enroll <client_id> --profile ${out.profile}`)
     return out
   }
 
@@ -146,7 +146,7 @@ export const runSetupWizard = async (opts: SetupOptions) => {
   try {
     // Ctrl-C here is safe and expected: the profile is already on disk
     console.log('\nPaste the id when you have it, or press Ctrl-C and finish later with:')
-    console.log(`  nhi-local enroll <client_id> --profile ${out.profile}\n`)
+    console.log(`  nhi-proxy enroll <client_id> --profile ${out.profile}\n`)
     const clientId = (await rl.question('client_id: ')).trim()
     if (clientId) {
       const { runEnroll } = await import('./enroll.ts')

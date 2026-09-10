@@ -32,7 +32,7 @@ Commits follow [conventional commits](https://www.conventionalcommits.org)
 
 | Path | Responsibility |
 |---|---|
-| `bin/nhi-local.ts` | Entry point: `parseArgs` dispatch. No logic. |
+| `bin/nhi-proxy.ts` | Entry point: `parseArgs` dispatch. No logic. |
 | `src/paths.ts` | Profile directories, secure file read/write (0600/0700) |
 | `src/config.ts` | Config record type, read/write |
 | `src/profiles.ts` | Profile discovery, resolution rules, port assignment |
@@ -45,7 +45,7 @@ Commits follow [conventional commits](https://www.conventionalcommits.org)
 | `src/proxy.ts` | CONNECT routing, interception, injection |
 | `src/commands/` | One file per CLI command |
 
-The [design spec](docs/superpowers/specs/2026-09-10-nhi-local-design.md) is the
+The [design spec](docs/superpowers/specs/2026-09-10-nhi-proxy-design.md) is the
 reference for *why* each of these behaves as it does, and carries the invariants
 any change must preserve.
 
@@ -74,9 +74,9 @@ profiles:
 
 ```bash
 export XDG_CONFIG_HOME=$(mktemp -d)
-node bin/nhi-local.ts setup --site https://koumoul.com < /dev/null
-node bin/nhi-local.ts profiles
-node bin/nhi-local.ts ca --spki
+node bin/nhi-proxy.ts setup --site https://koumoul.com < /dev/null
+node bin/nhi-proxy.ts profiles
+node bin/nhi-proxy.ts ca --spki
 ```
 
 `setup` prompts only when stdin is a TTY; redirecting from `/dev/null` runs it

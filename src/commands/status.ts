@@ -15,6 +15,6 @@ export const runStatus = async (opts: { profile?: string, jwks?: boolean }) => {
   console.log(`sd path   ${config.sdPath}`)
   console.log(`issuer    ${config.issuer}`)
   console.log(`subject   ${config.subject}`)
-  console.log(`client_id ${config.clientId ?? `(not enrolled — run \`nhi-local enroll <client_id> --profile ${profile}\`)`}`)
+  console.log(`client_id ${config.clientId ?? `(not enrolled — run \`nhi-proxy enroll <client_id> --profile ${profile}\`)`}`)
   console.log(`port      ${config.port}`)
 }

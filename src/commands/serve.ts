@@ -10,7 +10,7 @@ export const runServe = async (opts: { profile?: string, port?: number }) => {
   const profile = await resolveProfile(opts.profile)
   const config = await readConfig(profile)
   if (!config.clientId) {
-    throw new Error(`profile "${profile}" is not enrolled yet — run \`nhi-local enroll <client_id> --profile ${profile}\` with the id your admin returned.`)
+    throw new Error(`profile "${profile}" is not enrolled yet — run \`nhi-proxy enroll <client_id> --profile ${profile}\` with the id your admin returned.`)
   }
   const dir = profileDir(profile)
   const { key, kid } = await loadSigningKey(dir)
@@ -27,7 +27,7 @@ export const runServe = async (opts: { profile?: string, port?: number }) => {
     session
   })
 
-  console.log(`nhi-local proxying ${targetHost} on http://127.0.0.1:${proxy.port}`)
+  console.log(`nhi-proxy proxying ${targetHost} on http://127.0.0.1:${proxy.port}`)
   console.log(`  profile   ${profile}`)
   console.log(`  CA        ${dir}/ca.crt`)
   console.log(`  SPKI pin  ${spkiPin(ca)}`)

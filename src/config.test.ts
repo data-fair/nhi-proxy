@@ -8,7 +8,7 @@ import { writeConfig, readConfig } from './config.ts'
 
 test('profileDir places a named profile under XDG config', () => {
   process.env.XDG_CONFIG_HOME = '/tmp/xdg-test'
-  assert.equal(profileDir('koumoul.com'), '/tmp/xdg-test/nhi-local/koumoul.com')
+  assert.equal(profileDir('koumoul.com'), '/tmp/xdg-test/nhi-proxy/koumoul.com')
   delete process.env.XDG_CONFIG_HOME
 })
 
@@ -31,7 +31,7 @@ test('config round-trips', async () => {
   const cfg = {
     site: 'https://koumoul.com',
     sdPath: '/simple-directory',
-    issuer: 'https://nhi-local.data-fair.cloud/9f3c1a',
+    issuer: 'https://nhi-proxy.data-fair.cloud/9f3c1a',
     subject: 'alban@thinkpad',
     port: 7331
   }

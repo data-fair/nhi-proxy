@@ -3,7 +3,7 @@
 # Deliberately isolated: its own compose project name, an in-memory database and
 # unusual host ports, so it never collides with a data-fair dev stack you may
 # already be running. Bring it up with `npm run e2e-stack`.
-name: nhi-local-e2e
+name: nhi-proxy-e2e
 
 services:
   mongo:
@@ -20,14 +20,14 @@ services:
     environment:
       PORT: 8080
       PUBLIC_URL: http://localhost:5690/simple-directory
-      MONGO_URL: mongodb://mongo:27017/nhi-local-e2e
+      MONGO_URL: mongodb://mongo:27017/nhi-proxy-e2e
       # the whole point: without this every exchange returns 404
       MANAGE_NHIS: 'true'
       ADMINS: '["superadmin@test.com"]'
       OBSERVER_ACTIVE: 'false'
       CONTACT: e2e@example.com
       # throwaway: this stack is ephemeral and never leaves the machine
-      CIPHER_PASSWORD: nhi-local-e2e
+      CIPHER_PASSWORD: nhi-proxy-e2e
       # the auth limiter spends a point on every exchange, successful or not
       # (5/minute by default), which a repeated test run exhausts immediately
       AUTHRATELIMIT_ATTEMPTS: '1000'

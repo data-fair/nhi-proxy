@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
 export const configRoot = () =>
-  join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'nhi-local')
+  join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'nhi-proxy')
 
 export const profileDir = (profile: string) => join(configRoot(), profile)
 

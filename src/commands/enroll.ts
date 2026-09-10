@@ -13,5 +13,5 @@ export const runEnroll = async (clientId: string, profileOpt?: string) => {
   // a real exchange now, so misconfiguration surfaces here and not mid-session
   await holder.cookieHeader()
   console.log(`Enrolled ${clientId}: a test exchange with ${config.site} succeeded.`)
-  console.log(`Start the proxy with:  nhi-local serve --profile ${profile}`)
+  console.log(`Start the proxy with:  nhi-proxy serve --profile ${profile}`)
 }

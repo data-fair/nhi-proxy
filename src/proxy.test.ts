@@ -172,7 +172,7 @@ test('a failed refresh returns 502 naming the cause, never an unauthenticated re
   })
 
   const body = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem)
-  assert.match(body, /nhi-local/)
+  assert.match(body, /nhi-proxy/)
   assert.match(body, /clock is 5m00s ahead/)
   await proxy.close(); up.server.close()
 })

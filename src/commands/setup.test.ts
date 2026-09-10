@@ -25,12 +25,12 @@ test('setup names the profile after the site host and writes secrets 0600', asyn
   assert.equal(cfg.sdPath, '/simple-directory')
   assert.equal(cfg.subject, 'alban@thinkpad')
   assert.equal(cfg.port, 7331)
-  assert.match(cfg.issuer, /^https:\/\/nhi-local\.data-fair\.cloud\/[0-9a-f]+$/)
+  assert.match(cfg.issuer, /^https:\/\/nhi-proxy\.data-fair\.cloud\/[0-9a-f]+$/)
   assert.equal(cfg.clientId, undefined, 'enrollment has not happened yet')
 
   assert.equal((out.jwks.keys[0] as any).d, undefined, 'only the public key is ever printed')
 
-  const dir = join(process.env.XDG_CONFIG_HOME!, 'nhi-local', 'koumoul.com')
+  const dir = join(process.env.XDG_CONFIG_HOME!, 'nhi-proxy', 'koumoul.com')
   for (const f of ['key.jwk', 'ca.key', 'leaf.key']) {
     assert.equal((await stat(join(dir, f))).mode & 0o777, 0o600, `${f} must be 0600`)
   }

@@ -1,4 +1,4 @@
-# nhi-local — design
+# nhi-proxy — design
 
 A local credential provider that lets an agentic coding harness (opencode, Claude
 Code) drive local MCP tools — Playwright, curl, any HTTP client — against a
@@ -21,7 +21,7 @@ exchanging a signed assertion. What is missing is the client half — something
 that holds the signing key, performs the exchange, and hands the resulting
 session to ordinary local tools that know nothing about any of it.
 
-`nhi-local` is that client half.
+`nhi-proxy` is that client half.
 
 ## 2. Constraints inherited from simple-directory
 
@@ -196,7 +196,7 @@ otherwise the rate limiter trips on ordinary use.
 No changes to simple-directory are required; its add-NHI form already accepts a
 pasted inline JWKS (`ui/src/components/add-nhi-menu.vue`).
 
-`nhi-local setup` is a wizard, because this is a once-per-machine task done by
+`nhi-proxy setup` is a wizard, because this is a once-per-machine task done by
 someone who has not read the source. On a TTY it prompts; with flags, or without
 a TTY, it runs unattended so it stays scriptable and testable.
 
@@ -212,7 +212,7 @@ a TTY, it runs unattended so it stays scriptable and testable.
    failure.
 
 Interrupting at step 3 is safe and expected: the profile is already on disk, and
-the wizard says so, pointing at `nhi-local enroll <client_id>` to finish once
+the wizard says so, pointing at `nhi-proxy enroll <client_id>` to finish once
 the admin replies. `enroll` therefore remains a first-class command, not merely
 an internal step.
 
@@ -228,7 +228,7 @@ necessarily a manual admin action.
 
 ### 7.1 Profiles
 
-One directory per profile under `~/.config/nhi-local/` (XDG). Never inside a
+One directory per profile under `~/.config/nhi-proxy/` (XDG). Never inside a
 project directory — that alone keeps it outside every project-scoped agent's
 default file access, and out of git.
 
@@ -272,7 +272,7 @@ target from its own daemon, so two profiles must never collide by accident.
 ### 7.2 Layout and configuration
 
 ```
-~/.config/nhi-local/
+~/.config/nhi-proxy/
   koumoul.com/
     config.json
     key.jwk      0600   signing key
@@ -288,7 +288,7 @@ target from its own daemon, so two profiles must never collide by accident.
   "site":     "https://koumoul.com",
   "sdPath":   "/simple-directory",
   "clientId": "nhi-V1StGXR8Z5",
-  "issuer":   "https://nhi-local.data-fair.cloud/9f3c1a",
+  "issuer":   "https://nhi-proxy.data-fair.cloud/9f3c1a",
   "subject":  "alban@thinkpad",
   "port":     7331
 }
@@ -302,7 +302,7 @@ configuration mistake and the reason they are separate fields — `setup` reject
 a `--site` carrying a path, since that is almost always someone pasting the
 simple-directory URL.
 
-The default issuer is `https://nhi-local.data-fair.cloud/<random>`, under a
+The default issuer is `https://nhi-proxy.data-fair.cloud/<random>`, under a
 domain the project controls. It never needs to resolve and must not serve a
 discovery document. The random suffix is not a secret; it exists so two
 developers' entries stay distinguishable in simple-directory's logs.
@@ -323,19 +323,19 @@ would silently break all of them.
 proxy ever mints**. Leaves are minted per hostname on demand and cached in
 memory. A single reused leaf key means a stable SubjectPublicKeyInfo across
 every presented certificate, so there is exactly one fingerprint to pin —
-printed by `nhi-local ca --spki`. This turns the browser recipe from "disable
+printed by `nhi-proxy ca --spki`. This turns the browser recipe from "disable
 certificate validation" into "trust this one key", a materially better posture
 for a tool whose purpose is credential hygiene.
 
 ```bash
 # curl
 curl --proxy http://127.0.0.1:7331 \
-     --cacert ~/.config/nhi-local/koumoul.com/ca.crt \
+     --cacert ~/.config/nhi-proxy/koumoul.com/ca.crt \
      https://koumoul.com/data-fair/api/v1/datasets
 
 # any Node-based tool
 export HTTPS_PROXY=http://127.0.0.1:7331
-export NODE_EXTRA_CA_CERTS=~/.config/nhi-local/koumoul.com/ca.crt
+export NODE_EXTRA_CA_CERTS=~/.config/nhi-proxy/koumoul.com/ca.crt
 ```
 
 Playwright MCP takes a config file rather than flags, because `--config` exposes
@@ -347,7 +347,7 @@ full `launchOptions` including Chromium `args` (verified against
   "browser": {
     "launchOptions": {
       "proxy": { "server": "http://127.0.0.1:7331" },
-      "args": ["--ignore-certificate-errors-spki-list=<nhi-local ca --spki>"]
+      "args": ["--ignore-certificate-errors-spki-list=<nhi-proxy ca --spki>"]
     }
   }
 }
@@ -355,7 +355,7 @@ full `launchOptions` including Chromium `args` (verified against
 
 `--ignore-https-errors` is documented as the one-line fallback, with its cost
 stated: it stops the browser validating certificates for *every* site in that
-session, including the ones nhi-local blind-tunnels and never touches.
+session, including the ones nhi-proxy blind-tunnels and never touches.
 
 **Resolved during implementation (2026-09-10).** Chromium's
 `--ignore-certificate-errors-spki-list` matches the **leaf** certificate's SPKI
@@ -388,7 +388,7 @@ responses are nonetheless distinguishable and must be named outright:
 | `429` | rate limiter tripped (per IP or per client_id) | back off and say so; never retry-storm |
 | `401` | everything else | run the local checklist |
 
-**The local checklist on a 401** covers what nhi-local can see for itself:
+**The local checklist on a 401** covers what nhi-proxy can see for itself:
 `client_id` present and well-formed; `site` exactly as the admin configured it
 (an origin mismatch is an audience mismatch); the binding's JWKS matching the
 current key; and **clock skew, measured against the `Date` header of the very
@@ -400,14 +400,14 @@ our clock to the server's costs one header read.
 misconfiguration surfaces then rather than mid-agent-session.
 
 **A failed refresh mid-session returns `502` from the proxy with a plain-text
-body naming the nhi-local cause.** The request is *not* forwarded
+body naming the nhi-proxy cause.** The request is *not* forwarded
 unauthenticated: data-fair would answer with a 401 or a logged-out HTML page,
 and an agent would burn tokens interpreting that instead of reading
-`nhi-local: assertion rejected — local clock is 4m12s ahead of the server`.
+`nhi-proxy: assertion rejected — local clock is 4m12s ahead of the server`.
 
 ## 10. Keeping the key away from the agent (documentation)
 
-v1 ships this as README guidance only. nhi-local does not detect harnesses and
+v1 ships this as README guidance only. nhi-proxy does not detect harnesses and
 does not write to configuration files it does not own.
 
 There is no cross-harness convention for this — Claude Code's documentation
@@ -419,7 +419,7 @@ in increasing strength:
 Claude Code, in `~/.claude/settings.json`:
 
 ```json
-{ "permissions": { "deny": ["Read(~/.config/nhi-local/**)"] } }
+{ "permissions": { "deny": ["Read(~/.config/nhi-proxy/**)"] } }
 ```
 
 In *user* settings a bare `Read(/foo/**)` resolves against `~/.claude`, so the
@@ -430,7 +430,7 @@ opencode, in `~/.config/opencode/opencode.json` (last matching rule wins, so the
 catch-all goes first):
 
 ```json
-{ "permission": { "read": { "*": "allow", "~/.config/nhi-local/*": "deny" } } }
+{ "permission": { "read": { "*": "allow", "~/.config/nhi-proxy/*": "deny" } } }
 ```
 
 These are guardrails, not boundaries. Claude Code's own docs name the holes:
@@ -444,7 +444,7 @@ its child processes:
 
 ```json
 { "sandbox": { "credentials": { "files": [
-  { "path": "~/.config/nhi-local", "mode": "deny" }
+  { "path": "~/.config/nhi-proxy", "mode": "deny" }
 ] } } }
 ```
 
@@ -468,11 +468,11 @@ as a documented systemd unit.
 
 ## 11. CLI surface
 
-**Bare `nhi-local` is the whole user experience.** With no arguments it does the
+**Bare `nhi-proxy` is the whole user experience.** With no arguments it does the
 next useful thing, so a first-time user who types the name and nothing else is
 carried from setup to a running proxy:
 
-| Profiles found | Bare `nhi-local` does |
+| Profiles found | Bare `nhi-proxy` does |
 |---|---|
 | 0 | runs the `setup` wizard, then offers to start serving |
 | 1 | serves it |
@@ -480,7 +480,7 @@ carried from setup to a running proxy:
 
 A single profile that was never enrolled is not a special case: `serve` fails
 with the message that already exists for it — *not enrolled yet, run
-`nhi-local enroll <client_id>`* — which points at the next step without adding
+`nhi-proxy enroll <client_id>`* — which points at the next step without adding
 a branch.
 
 | Command | Purpose |
@@ -500,7 +500,7 @@ overwrite an existing profile unless `--rotate` is given.
 `setup` prompts only when stdin is a TTY. Without one it runs from flags alone
 and skips the wait for a `client_id`, so it works in a script and in tests.
 
-Published as `@data-fair/nhi-local`, Node and TypeScript, matching the rest of
+Published as `@data-fair/nhi-proxy`, Node and TypeScript, matching the rest of
 the stack. Runnable via `npx`.
 
 ## 12. Testing
@@ -518,7 +518,7 @@ unmodified.
 **End to end, self-contained.** `npm run e2e` brings up an isolated
 simple-directory via `docker-compose.yml` (its own compose project, tmpfs mongo,
 unusual ports), seeds an organization and an admin of it, creates an NHI
-carrying nhi-local's real JWKS, starts the proxy, and asserts that a request
+carrying nhi-proxy's real JWKS, starts the proxy, and asserts that a request
 through it comes back identifying the NHI with `nhi: 1` and no admin flag. This
 is the only test that proves the whole chain, and it must stay runnable without
 manual setup — it is what caught both proxy bugs above.

@@ -21,7 +21,7 @@ dev stack you may already be running:
 
 | | |
 |---|---|
-| compose project | `nhi-local-e2e` |
+| compose project | `nhi-proxy-e2e` |
 | simple-directory | `http://localhost:5690/simple-directory` |
 | mongo | `localhost:27317`, **tmpfs** — every run starts empty |
 

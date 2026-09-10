@@ -4,9 +4,9 @@ import { readConfig, type NhiLocalConfig } from './config.ts'
 
 export type ProfileSummary = { name: string, dir: string, config: NhiLocalConfig }
 
-/** thrown when nothing is configured yet, so bare `nhi-local` can run setup */
+/** thrown when nothing is configured yet, so bare `nhi-proxy` can run setup */
 export class NoProfilesError extends Error {
-  constructor () { super('no nhi-local profile configured yet') }
+  constructor () { super('no nhi-proxy profile configured yet') }
 }
 
 // The filesystem is the profile list: a profile is any subdirectory holding a
@@ -38,7 +38,7 @@ export const resolveProfile = async (explicit?: string): Promise<string> => {
     if (names.includes(explicit)) return explicit
     throw new Error(names.length
       ? `no profile named "${explicit}". Configured profiles: ${names.join(', ')}`
-      : `no profile named "${explicit}", and none are configured. Run \`nhi-local setup\`.`)
+      : `no profile named "${explicit}", and none are configured. Run \`nhi-proxy setup\`.`)
   }
   if (profiles.length === 0) throw new NoProfilesError()
   if (profiles.length === 1) return profiles[0].name
