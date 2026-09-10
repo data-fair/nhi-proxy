@@ -4,25 +4,27 @@
   "description": "Local NHI credential provider for agentic coding tools against a data-fair platform",
   "type": "module",
   "bin": {
-    "nhi-proxy": "./bin/nhi-proxy.ts"
+    "nhi-proxy": "./dist/bin/nhi-proxy.js"
   },
   "files": [
-    "bin",
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "lint-fix": "eslint --fix .",
     "check-types": "tsc",
     "test": "NODE_ENV=test node --test --test-force-exit 'src/**/*.test.ts'",
+    "test-package": "node --test --test-force-exit 'test-e2e/package.test.ts'",
     "test-e2e": "node --test --test-force-exit 'test-e2e/**/*.test.ts'",
-    "quality": "npm run lint && npm run check-types && npm run test",
-    "prepare": "husky || true",
     "e2e": "bash test-e2e/run.sh",
     "e2e-stack": "docker compose up -d --wait",
-    "e2e-stack-down": "docker compose down -v"
+    "e2e-stack-down": "docker compose down -v",
+    "quality": "npm run lint && npm run check-types && npm run test && npm run test-package",
+    "prepack": "npm run build",
+    "prepare": "husky || true"
   },
   "author": "Alban Mouton <alban.mouton@gmail.com>",
   "license": "AGPL-3.0-only",

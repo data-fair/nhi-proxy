@@ -9,18 +9,33 @@ nvm use
 npm install
 ```
 
-There is no build step. Node 24 runs the TypeScript sources directly via type
-stripping, which is why `enum`, `namespace` and decorators are unavailable and
-type-only imports must use `import type`.
+Node 24 runs the TypeScript sources directly via type stripping, so day-to-day
+work needs no build: `node bin/nhi-proxy.ts` just runs. That is why `enum`,
+`namespace` and decorators are unavailable and type-only imports must use
+`import type`.
+
+**Publishing does need a build**, and this is not optional: node refuses to
+strip types for anything under `node_modules`
+(`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so a package whose `bin` is a
+`.ts` file runs fine from a clone and fails for every user who installs it.
+`prepack` therefore runs `tsc -p tsconfig.build.json`, emitting `dist/` with
+`rewriteRelativeImportExtensions` turning our `./foo.ts` specifiers into
+`./foo.js`. The published `bin` points at `dist/bin/nhi-proxy.js`.
+
+`npm run test-package` is the guard: it packs, installs into a throwaway
+project and runs the installed binary. Nothing short of a real install catches
+this class of breakage, so it is part of `npm run quality`.
 
 ## Scripts
 
 | Script | What it does |
 |---|---|
 | `npm test` | Unit tests (`node --test`, colocated `src/**/*.test.ts`) |
+| `npm run build` | Emit `dist/` — what actually gets published |
+| `npm run test-package` | Pack, install into a temp project, run the installed bin |
 | `npm run lint` / `lint-fix` | eslint (neostandard) |
 | `npm run check-types` | `tsc --noEmit` |
-| `npm run quality` | All three — run this before committing |
+| `npm run quality` | Lint, types, unit tests and the packaging check — run before committing |
 | `npm run e2e` | Bring up an isolated simple-directory in Docker, seed it, run the end-to-end test |
 | `npm run e2e-stack` / `e2e-stack-down` | Manage that stack on its own |
 | `npm run test-e2e` | End-to-end test against a stack you configured via `E2E_*` |

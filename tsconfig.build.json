@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    // node refuses to strip types under node_modules, so the published package
+    // has to be JavaScript. This rewrites the `./foo.ts` specifiers we use in
+    // source into `./foo.js` on the way out (TypeScript 5.7+).
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["bin/**/*.ts", "src/**/*.ts"],
+  "exclude": ["node_modules", "src/**/*.test.ts", "test-e2e"]
+}
