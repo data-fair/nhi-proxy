@@ -155,6 +155,19 @@ An HTTP CONNECT proxy bound to `127.0.0.1:<port>`.
 - Plain-HTTP requests to the target (localhost dev stacks) take the same
   injection path with no TLS work.
 
+**CONNECT does not imply TLS, and the scheme does not imply the port.** Both
+were found by running the end-to-end test against a real server, and both only
+bite on the plain-http dev-stack path:
+
+- Some clients — undici's `ProxyAgent` among them — tunnel *every* scheme
+  through CONNECT. Meeting clear HTTP with a TLS handshake closes the socket
+  with no diagnosable error, so the proxy hands an intercepted tunnel to a TLS
+  server or a plain HTTP server according to the target's own scheme
+  (`targetSecure`).
+- The upstream port must come from the configured site (`targetPort`), not from
+  the scheme's default. A target on `http://localhost:5690` is otherwise dialled
+  at port 80.
+
 Injection merges the held cookies into any `Cookie` header already present
 rather than replacing it, so a tool that sets its own unrelated cookies keeps
 them.
@@ -486,11 +499,21 @@ validates against the generated CA, the SPKI is stable across hostnames, and
 cookies are injected on the target while a tunnelled host passes through
 unmodified.
 
-**End to end.** Against simple-directory's dev stack with `manageNhis` enabled:
-create an NHI carrying nhi-local's real JWKS, start the proxy, make a request
-through it, assert an authenticated response. This is the only test that proves
-the whole chain. `tests/features/nhis.api.spec.ts` and `dev/fixtures.ts` in
-simple-directory give the pattern.
+**End to end, self-contained.** `npm run e2e` brings up an isolated
+simple-directory via `docker-compose.yml` (its own compose project, tmpfs mongo,
+unusual ports), seeds an organization and an admin of it, creates an NHI
+carrying nhi-local's real JWKS, starts the proxy, and asserts that a request
+through it comes back identifying the NHI with `nhi: 1` and no admin flag. This
+is the only test that proves the whole chain, and it must stay runnable without
+manual setup — it is what caught both proxy bugs above.
+
+Four things that stack needs, none of them obvious: `MANAGE_NHIS=true`; a
+`PUBLIC_URL` carrying the `/simple-directory` path; an nginx supplying
+`X-Forwarded-Host`/`-Proto`/`-For`, with the port preserved because the origin
+it yields *is* the audience; and a raised `AUTHRATELIMIT_ATTEMPTS`, since the
+limiter spends a point per exchange and the default of 5/minute is exhausted by
+a couple of runs. The published release tags predate the NHI feature, so the
+image is `:master`.
 
 **Diagnostics.** The 404 / 429 / 401 branches and the clock-skew detector are
 worth direct tests — they are the parts a user meets on a bad day, and the
