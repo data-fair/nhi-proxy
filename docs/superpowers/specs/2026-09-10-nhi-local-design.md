@@ -100,7 +100,7 @@ One process, three parts.
 
 ### 4.1 Signer
 
-An **ES256** (P-256 ECDSA) keypair generated at `init`. Private key at
+An **ES256** (P-256 ECDSA) keypair generated at `setup`. Private key at
 `key.jwk`, mode 0600; the public half is published to simple-directory as the
 binding's inline JWKS, as `{ kty: 'EC', crv: 'P-256', alg: 'ES256', use: 'sig',
 kid, x, y }`.
@@ -183,37 +183,86 @@ otherwise the rate limiter trips on ordinary use.
 No changes to simple-directory are required; its add-NHI form already accepts a
 pasted inline JWKS (`ui/src/components/add-nhi-menu.vue`).
 
-1. `nhi-local init --site https://site.example.com --subject alban@thinkpad`
-   generates the keypair and CA, writes the config, and prints the three values
-   the org admin needs: **issuer**, **subject**, **public JWKS**.
-2. An org admin creates the NHI with those values (name, role, optional
-   department are theirs to choose) and returns the generated `client_id`
-   (`nhi-<nanoid>`).
-3. `nhi-local enroll nhi-V1StGXR8Z5` records it and immediately performs a real
-   test exchange, running the full diagnostic checklist (§9) on failure.
+`nhi-local setup` is a wizard, because this is a once-per-machine task done by
+someone who has not read the source. On a TTY it prompts; with flags, or without
+a TTY, it runs unattended so it stays scriptable and testable.
 
-The human-admin approval step stays explicit and is not automated away. Rotating
-the key later is `init --rotate` plus an admin `PATCH` of the binding's JWKS —
-inline JWKS has no refetch mechanism, so this is necessarily a manual admin
-action.
+1. **Prompt** for the platform URL (default `https://koumoul.com`), the profile
+   name (defaulted from the site host), and the subject (defaulted to
+   `<user>@<hostname>`). Generate the keypair and CA.
+2. **Print a delimited block to forward to an org admin** — the developer is
+   frequently not the admin, so the output is written to be pasted into a chat
+   message unedited. It carries the issuer, the subject, the public JWKS, and
+   where in simple-directory they go.
+3. **Wait for the pasted `client_id`** (`nhi-<nanoid>`) the admin returns, then
+   perform a real test exchange and run the diagnostic checklist (§9) on
+   failure.
 
-## 7. Configuration and filesystem layout
+Interrupting at step 3 is safe and expected: the profile is already on disk, and
+the wizard says so, pointing at `nhi-local enroll <client_id>` to finish once
+the admin replies. `enroll` therefore remains a first-class command, not merely
+an internal step.
 
-`~/.config/nhi-local/<profile>/` (XDG; `default` when unnamed). Never inside a
+The same manual paste is used whether or not the developer is themselves an org
+admin — one code path, and the human approval step stays explicit rather than
+being automated away.
+
+Rotating the key later is `setup --rotate` on an existing profile plus an admin
+`PATCH` of the binding's JWKS. Inline JWKS has no refetch mechanism, so this is
+necessarily a manual admin action.
+
+## 7. Profiles, configuration and filesystem layout
+
+### 7.1 Profiles
+
+One directory per profile under `~/.config/nhi-local/` (XDG). Never inside a
 project directory — that alone keeps it outside every project-scoped agent's
 default file access, and out of git.
 
+**The filesystem is the profile list.** A profile is any subdirectory holding a
+`config.json`; there is no registry file to fall out of sync, and `rm -r` on the
+directory is a complete uninstall of that profile.
+
+Profiles are **named after the site host** by default — `koumoul.com`,
+`staging.koumoul.com`, `localhost-5600` — rather than a generic `default`.
+Running against several platforms is the expected case, not an edge case, so a
+generic name would be actively unhelpful the moment a second one exists.
+`--profile` at setup time overrides the name.
+
+**Resolution**, applied identically by every command:
+
+| `--profile` | Profiles found | Behaviour |
+|---|---|---|
+| given | — | use it; if absent, error naming the profiles that do exist |
+| absent | 0 | run `setup` |
+| absent | 1 | use it implicitly |
+| absent | 2+ | error listing them, asking for `--profile` |
+
+The single-profile case is the common one and must not require ceremony; the
+multi-profile case must never guess, because guessing means sending an
+organization's credential at the wrong platform.
+
+**Ports auto-assign at setup**: 7331, then the lowest free port above it not
+already claimed in another profile's `config.json`. Each profile serves one
+target from its own daemon, so two profiles must never collide by accident.
+
+### 7.2 Layout and configuration
+
 ```
-config.json
-key.jwk      0600   signing key
-ca.crt              local CA certificate
-ca.key       0600   local CA key
-leaf.key     0600   the single reused leaf keypair (see §8)
+~/.config/nhi-local/
+  koumoul.com/
+    config.json
+    key.jwk      0600   signing key
+    ca.crt              local CA certificate
+    ca.key       0600   local CA key
+    leaf.key     0600   the single reused leaf keypair (see §8)
+  staging.koumoul.com/
+    ...
 ```
 
 ```json
 {
-  "site":     "https://site.example.com",
+  "site":     "https://koumoul.com",
   "sdPath":   "/simple-directory",
   "clientId": "nhi-V1StGXR8Z5",
   "issuer":   "https://nhi-local.data-fair.cloud/9f3c1a",
@@ -222,11 +271,13 @@ leaf.key     0600   the single reused leaf keypair (see §8)
 }
 ```
 
-`site` is both the audience and the host the proxy intercepts. `sdPath` is where
-simple-directory is mounted on that origin (default `/simple-directory`; a
-data-fair stack serves the portal at `/` and simple-directory under a prefix).
-Conflating the two is the most likely configuration mistake and the reason they
-are separate fields.
+`site` is both the audience and the host the proxy intercepts, and must be a
+bare origin. `sdPath` is where simple-directory is mounted on that origin
+(default `/simple-directory`; a data-fair stack serves the portal at `/` and
+simple-directory under a prefix). Conflating the two is the most likely
+configuration mistake and the reason they are separate fields — `setup` rejects
+a `--site` carrying a path, since that is almost always someone pasting the
+simple-directory URL.
 
 The default issuer is `https://nhi-local.data-fair.cloud/<random>`, under a
 domain the project controls. It never needs to resolve and must not serve a
@@ -234,12 +285,12 @@ discovery document. The random suffix is not a secret; it exists so two
 developers' entries stay distinguishable in simple-directory's logs.
 
 **One target per profile.** A developer working against both a local dev stack
-and staging runs two daemons on two ports. Multi-target routing in one daemon is
-deliberately deferred.
+and staging runs two daemons on two ports. Multi-target routing inside one
+daemon is deliberately deferred.
 
 ## 8. TLS interception and tool wiring
 
-`init` generates a CA and **one leaf keypair reused for every certificate the
+`setup` generates a CA and **one leaf keypair reused for every certificate the
 proxy ever mints**. Leaves are minted per hostname on demand and cached in
 memory. A single reused leaf key means a stable SubjectPublicKeyInfo across
 every presented certificate, so there is exactly one fingerprint to pin —
@@ -250,12 +301,12 @@ for a tool whose purpose is credential hygiene.
 ```bash
 # curl
 curl --proxy http://127.0.0.1:7331 \
-     --cacert ~/.config/nhi-local/default/ca.crt \
-     https://site.example.com/api/v1/datasets
+     --cacert ~/.config/nhi-local/koumoul.com/ca.crt \
+     https://koumoul.com/data-fair/api/v1/datasets
 
 # any Node-based tool
 export HTTPS_PROXY=http://127.0.0.1:7331
-export NODE_EXTRA_CA_CERTS=~/.config/nhi-local/default/ca.crt
+export NODE_EXTRA_CA_CERTS=~/.config/nhi-local/koumoul.com/ca.crt
 ```
 
 Playwright MCP takes a config file rather than flags, because `--config` exposes
@@ -384,16 +435,37 @@ as a documented systemd unit.
 
 ## 11. CLI surface
 
+**Bare `nhi-local` is the whole user experience.** With no arguments it does the
+next useful thing, so a first-time user who types the name and nothing else is
+carried from setup to a running proxy:
+
+| Profiles found | Bare `nhi-local` does |
+|---|---|
+| 0 | runs the `setup` wizard, then offers to start serving |
+| 1 | serves it |
+| 2+ | lists them and asks for `--profile` |
+
+A single profile that was never enrolled is not a special case: `serve` fails
+with the message that already exists for it — *not enrolled yet, run
+`nhi-local enroll <client_id>`* — which points at the next step without adding
+a branch.
+
 | Command | Purpose |
 |---|---|
-| `init --site <url> [--subject <s>] [--rotate]` | Generate keypair and CA, write config, print issuer / subject / JWKS for the admin. `--subject` defaults to `<user>@<hostname>` |
+| `setup [--site <origin>] [--profile <p>] [--subject <s>] [--sd-path <p>] [--port <n>] [--rotate]` | Configure a new profile: prompt (on a TTY) or take flags, generate keypair and CA, print the block for the admin, then wait for a `client_id`. `--site` defaults to `https://koumoul.com`, `--subject` to `<user>@<hostname>`, `--profile` to the site host |
 | `enroll <client_id>` | Record the client_id, run a test exchange and the diagnostic checklist |
 | `serve [--port <n>]` | Run the proxy |
-| `status` | Binding, session expiry, last exchange result |
-| `ca --spki` / `ca --path` | Print the pin value / the CA path for tool wiring |
+| `status [--jwks]` | Binding, session expiry, last exchange result; `--jwks` re-prints the public JWKS for a re-paste after rotation |
+| `ca [--spki]` | Print the CA path, or the pin value for tool wiring |
+| `profiles` | List configured profiles with their site and port |
 
-Every command takes `--profile <p>` (default `default`), selecting the directory
-under `~/.config/nhi-local/`.
+Every command except `profiles` takes `--profile <p>` and follows the resolution
+table in §7.1. `setup` is the exception that *creates* rather than resolves:
+without `--profile` it derives the name from the site host, and it refuses to
+overwrite an existing profile unless `--rotate` is given.
+
+`setup` prompts only when stdin is a TTY. Without one it runs from flags alone
+and skips the wait for a `client_id`, so it works in a script and in tests.
 
 Published as `@data-fair/nhi-local`, Node and TypeScript, matching the rest of
 the stack. Runnable via `npx`.
@@ -437,7 +509,7 @@ server gives them nothing to work with.
 
 1. No credential — signing key, assertion, session cookie — is ever written to
    stdout, to a log line, or to any response body a tool can read, except the
-   *public* JWKS that `init` prints for the admin.
+   *public* JWKS that `setup` prints for the admin.
 2. The proxy intercepts exactly one host, the configured `site`. Every other
    CONNECT is tunnelled without inspection.
 3. Session cookies live in memory only and are never persisted.
@@ -446,3 +518,6 @@ server gives them nothing to work with.
 5. Concurrent requests needing a refresh trigger exactly one exchange.
 6. `key.jwk`, `ca.key`, and `leaf.key` are created 0600 in a 0700 directory,
    outside any project tree.
+7. With more than one profile configured and no `--profile` given, no command
+   ever picks one. Guessing here means pointing one organization's credential
+   at another organization's platform.
