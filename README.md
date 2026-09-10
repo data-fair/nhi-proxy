@@ -77,6 +77,11 @@ $ curl --proxy http://127.0.0.1:7331 \
 
 [Wiring Playwright MCP and other tools →](docs/usage.md#wiring-your-tools)
 
+Each NHI gets its own profile, so you can hold several on one platform —
+`nhi-local setup --site https://koumoul.com --profile koumoul-readonly`. With
+one profile, `--profile` is never needed.
+[More on profiles →](docs/usage.md#profiles)
+
 **Prerequisite:** the platform's simple-directory must run with `manageNhis`
 enabled, or every exchange returns 404. `nhi-local` says so explicitly when that
 happens.

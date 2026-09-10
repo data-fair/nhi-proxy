@@ -5,7 +5,7 @@ import { ensureProfileDir, profileDir } from '../paths.ts'
 import { writeConfig, readConfig } from '../config.ts'
 import { generateSigningKey, publicJwks } from '../keys.ts'
 import { generateCa } from '../ca.ts'
-import { listProfiles, profileNameForSite, nextFreePort } from '../profiles.ts'
+import { listProfiles, profileNameForSite, defaultProfileName, nextFreePort, resolveProfile } from '../profiles.ts'
 
 export const DEFAULT_SITE = 'https://koumoul.com'
 
@@ -18,39 +18,17 @@ export type SetupOptions = {
   rotate?: boolean
 }
 
-export const runSetup = async (opts: SetupOptions) => {
-  const url = new URL(opts.site ?? DEFAULT_SITE)
+const validSite = (site: string) => {
+  const url = new URL(site)
   // the assertion audience is reqOrigin + reqSitePath; a site with a path here
   // is almost always someone pasting the simple-directory URL by mistake
   if (url.pathname !== '/' && url.pathname !== '') {
     throw new Error(`--site must be the platform origin (e.g. ${url.origin}), not a URL with a path. simple-directory's own mount path goes in --sd-path.`)
   }
-  const site = url.origin
-  const profile = opts.profile ?? profileNameForSite(site)
+  return url.origin
+}
 
-  const existing = (await listProfiles()).find(p => p.name === profile)
-  if (existing && !opts.rotate) {
-    throw new Error(`profile "${profile}" already exists (${existing.config.site}). Use --rotate to replace its key, or --profile <name> for a separate one.`)
-  }
-  const previous = existing ? await readConfig(profile) : null
-
-  const dir = await ensureProfileDir(profile)
-  await generateSigningKey(dir)
-  // the CA is the trust anchor already installed in the user's tools; rotating
-  // the signing key must not invalidate every tool config on the machine
-  if (!previous) await generateCa(dir)
-
-  await writeConfig(profile, {
-    site,
-    sdPath: opts.sdPath ?? previous?.sdPath ?? '/simple-directory',
-    // the client_id survives a rotation: the admin re-pastes the JWKS onto the
-    // same NHI rather than creating a new one
-    clientId: previous?.clientId,
-    issuer: previous?.issuer ?? `https://nhi-local.data-fair.cloud/${randomBytes(4).toString('hex')}`,
-    subject: opts.subject ?? previous?.subject ?? `${userInfo().username}@${hostname()}`,
-    port: opts.port ?? previous?.port ?? await nextFreePort()
-  })
-
+const describe = async (profile: string, dir: string, rotated: boolean) => {
   const config = await readConfig(profile)
   return {
     profile,
@@ -59,9 +37,65 @@ export const runSetup = async (opts: SetupOptions) => {
     site: config.site,
     port: config.port,
     jwks: await publicJwks(dir),
-    rotated: !!previous
+    rotated
   }
 }
+
+/** create a profile for a new NHI */
+const createProfile = async (opts: SetupOptions) => {
+  const site = validSite(opts.site ?? DEFAULT_SITE)
+  // deliberately NOT auto-suffixed here: a script re-running `setup --site X`
+  // must fail loudly rather than quietly enrol a second NHI. The interactive
+  // wizard offers a suffixed name instead, which the user confirms.
+  const profile = opts.profile ?? profileNameForSite(site)
+
+  const clash = (await listProfiles()).find(p => p.name === profile)
+  if (clash) {
+    throw new Error(opts.profile
+      ? `profile "${profile}" already exists (${clash.config.site}). Choose another --profile name, or use --rotate to replace its key.`
+      : `profile "${profile}" already exists (${clash.config.site}). Each NHI gets its own profile, so name this one explicitly:\n  nhi-local setup --site ${site} --profile <name>\nTo replace the key of the existing NHI instead, use --rotate.`)
+  }
+
+  const dir = await ensureProfileDir(profile)
+  await generateSigningKey(dir)
+  await generateCa(dir)
+  await writeConfig(profile, {
+    site,
+    sdPath: opts.sdPath ?? '/simple-directory',
+    issuer: `https://nhi-local.data-fair.cloud/${randomBytes(4).toString('hex')}`,
+    subject: opts.subject ?? `${userInfo().username}@${hostname()}`,
+    port: opts.port ?? await nextFreePort()
+  })
+  return describe(profile, dir, false)
+}
+
+/** replace the signing key of an existing NHI's profile */
+const rotateProfile = async (opts: SetupOptions) => {
+  // resolveProfile, not the site-derived name: --rotate on the only profile
+  // should work whatever it is called, and must never create one
+  const profile = await resolveProfile(opts.profile)
+  const previous = await readConfig(profile)
+
+  const dir = await ensureProfileDir(profile)
+  await generateSigningKey(dir)
+  // the CA is the trust anchor already installed in the user's tools; rotating
+  // the signing key must not invalidate every tool config on the machine
+  await writeConfig(profile, {
+    ...previous,
+    // only what was explicitly passed changes; a bare --rotate must not
+    // silently repoint the profile at the default platform
+    site: opts.site ? validSite(opts.site) : previous.site,
+    sdPath: opts.sdPath ?? previous.sdPath,
+    subject: opts.subject ?? previous.subject,
+    port: opts.port ?? previous.port
+    // issuer and clientId are the admin-side binding: the admin re-pastes the
+    // JWKS onto the same NHI rather than creating a new one
+  })
+  return describe(profile, dir, true)
+}
+
+export const runSetup = async (opts: SetupOptions) =>
+  opts.rotate ? rotateProfile(opts) : createProfile(opts)
 
 export const printAdminBlock = (out: Awaited<ReturnType<typeof runSetup>>) => {
   const action = out.rotated
@@ -89,7 +123,7 @@ export const runSetupWizard = async (opts: SetupOptions) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     try {
       const site = (await rl.question(`Platform URL [${DEFAULT_SITE}]: `)).trim() || DEFAULT_SITE
-      const defaultName = profileNameForSite(new URL(site).origin)
+      const defaultName = await defaultProfileName(new URL(site).origin)
       const profile = (await rl.question(`Profile name [${defaultName}]: `)).trim() || defaultName
       const defaultSubject = `${userInfo().username}@${hostname()}`
       const subject = (await rl.question(`Subject (identifies this machine) [${defaultSubject}]: `)).trim() || defaultSubject

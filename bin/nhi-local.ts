@@ -19,7 +19,9 @@ const USAGE = `nhi-local — local NHI credential provider for agentic coding to
   nhi-local ca [--spki] [--profile <p>]
   nhi-local profiles
 
-With one profile configured, --profile can be omitted everywhere.
+A profile is one NHI. Several NHIs on the same platform each get their own,
+named with --profile. With one profile configured, --profile can be omitted
+everywhere; with more than one it is required.
 `
 
 const { values, positionals } = parseArgs({

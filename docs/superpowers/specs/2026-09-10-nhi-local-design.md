@@ -236,11 +236,21 @@ default file access, and out of git.
 `config.json`; there is no registry file to fall out of sync, and `rm -r` on the
 directory is a complete uninstall of that profile.
 
-Profiles are **named after the site host** by default — `koumoul.com`,
-`staging.koumoul.com`, `localhost-5600` — rather than a generic `default`.
-Running against several platforms is the expected case, not an edge case, so a
-generic name would be actively unhelpful the moment a second one exists.
-`--profile` at setup time overrides the name.
+**A profile is one NHI, not one platform.** Several NHIs on the same platform
+is a normal setup — a read-only identity beside a writing one, one per
+department, one per machine — and each needs its own signing key, issuer and
+port, because each is a separate identity an admin can revoke on its own.
+
+The first profile for a platform is **named after the site host** —
+`koumoul.com`, `staging.koumoul.com`, `localhost-5600` — rather than a generic
+`default`, which would be actively unhelpful the moment a second one exists.
+`--profile` names any further one.
+
+Re-running `setup --site <platform>` with the derived name already taken is
+**refused**, not auto-suffixed: in a script that repetition is far more often a
+mistake than an intention, and silently enrolling a second NHI would leave an
+orphan identity behind. The interactive wizard offers a free name
+(`koumoul.com-2`) as its prompt default instead, where a human confirms it.
 
 **Resolution**, applied identically by every command:
 
@@ -298,8 +308,14 @@ discovery document. The random suffix is not a secret; it exists so two
 developers' entries stay distinguishable in simple-directory's logs.
 
 **One target per profile.** A developer working against both a local dev stack
-and staging runs two daemons on two ports. Multi-target routing inside one
-daemon is deliberately deferred.
+and staging runs two daemons on two ports, as does one holding two NHIs on the
+same platform. Multi-target routing inside one daemon is deliberately deferred.
+
+**`--rotate` replaces the signing key and nothing else.** It resolves an
+existing profile by the rules above and never creates one; it keeps the
+`client_id`, issuer, platform, port and — critically — the local CA, since that
+is the trust anchor already installed in every tool on the machine. Rotating it
+would silently break all of them.
 
 ## 8. TLS interception and tool wiring
 
@@ -546,5 +562,7 @@ server gives them nothing to work with.
 6. `key.jwk`, `ca.key`, and `leaf.key` are created 0600 in a 0700 directory,
    outside any project tree.
 7. With more than one profile configured and no `--profile` given, no command
-   ever picks one. Guessing here means pointing one organization's credential
-   at another organization's platform.
+   ever picks one. Guessing here means acting as a different identity — a
+   different NHI on the same platform, or another organization entirely.
+8. `setup` never silently enrols a second NHI: a name collision is an error,
+   and `--rotate` never creates a profile.

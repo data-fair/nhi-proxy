@@ -5,25 +5,60 @@ and what to do when something fails.
 
 ## Profiles
 
-One profile per platform. The filesystem is the list — a profile is any
-directory under `~/.config/nhi-local/` containing a `config.json`, so `rm -r` on
-one is a complete uninstall.
+**One profile is one NHI.** Several NHIs on the same platform is a normal
+setup — a read-only identity alongside a writing one, one per department, one
+per machine — and each gets its own profile, its own signing key, its own
+issuer and its own port.
+
+The filesystem is the list: a profile is any directory under
+`~/.config/nhi-local/` containing a `config.json`, so `rm -r` on one is a
+complete uninstall.
 
 ```bash
-nhi-local profiles
-# koumoul.com          https://koumoul.com          :7331   nhi-V1StGXR8Z5
-# staging.koumoul.com  https://staging.koumoul.com  :7332   not enrolled
+$ nhi-local profiles
+PROFILE           PLATFORM              SUBJECT         PORT  NHI
+koumoul-readonly  https://koumoul.com   alban@thinkpad  7332  nhi-8kQm2LpXsA
+koumoul.com       https://koumoul.com   alban@thinkpad  7331  nhi-V1StGXR8Z5
+staging           https://staging.koumoul.com  alban@thinkpad  7333  not enrolled
 ```
 
-Profiles are named after the platform host. Ports auto-assign from 7331 upward.
+The first profile for a platform is named after its host; ports auto-assign
+from 7331 upward.
+
+### Adding a second NHI on the same platform
+
+Name it yourself:
+
+```bash
+nhi-local setup --site https://koumoul.com --profile koumoul-readonly
+```
+
+Re-running `setup --site <platform>` without `--profile` is refused rather than
+quietly enrolling a second NHI, since that is far more often a mistake than an
+intention. The interactive wizard instead offers a free name (`koumoul.com-2`)
+for you to accept or replace.
+
+### Choosing a profile
 
 **With one profile, `--profile` is never needed.** With more than one, every
-command requires it and refuses to guess — a wrong guess would point one
-organization's credential at another organization's platform.
+command requires it and refuses to guess — a wrong guess would act as a
+different identity, possibly in a different organization.
 
 ```bash
-nhi-local serve --profile staging.koumoul.com
+nhi-local serve --profile koumoul-readonly
 ```
+
+### Rotating a key
+
+```bash
+nhi-local setup --rotate --profile koumoul-readonly
+```
+
+This replaces the signing key and leaves everything else alone: the same
+`client_id`, issuer, platform and port, and the same local CA — so every tool
+you have already wired keeps working. Give the admin the new JWKS
+(`nhi-local status --jwks`) to paste onto the existing NHI. `--rotate` never
+creates a profile.
 
 ## Wiring your tools
 

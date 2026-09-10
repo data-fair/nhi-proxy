@@ -55,6 +55,18 @@ export const profileNameForSite = (site: string) => {
   return url.port ? `${url.hostname}-${url.port}` : url.hostname
 }
 
+// A profile is one NHI, not one platform: several NHIs on the same platform is
+// normal (different roles, departments, or machines). The host is only the
+// starting point for a name, suffixed until it is free.
+export const defaultProfileName = async (site: string) => {
+  const base = profileNameForSite(site)
+  const taken = new Set((await listProfiles()).map(p => p.name))
+  if (!taken.has(base)) return base
+  let n = 2
+  while (taken.has(`${base}-${n}`)) n++
+  return `${base}-${n}`
+}
+
 export const nextFreePort = async () => {
   const taken = new Set((await listProfiles()).map(p => p.config.port))
   let port = 7331
