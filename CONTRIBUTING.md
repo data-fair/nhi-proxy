@@ -26,6 +26,25 @@ strip types for anything under `node_modules`
 project and runs the installed binary. Nothing short of a real install catches
 this class of breakage, so it is part of `npm run quality`.
 
+### `npx` does not work inside this repo
+
+```
+$ cd ~/data-fair/nhi-proxy
+$ npx @data-fair/nhi-proxy
+sh: 1: nhi-proxy: not found
+```
+
+That is not a broken release. npm sees a `package.json` in the working
+directory whose `name` is the package you asked for, decides it is already
+satisfied, and looks for the `nhi-proxy` bin in the local `node_modules/.bin`,
+where nothing has installed it. The same command from any other directory
+works.
+
+Worth knowing because it is indistinguishable from a genuinely broken bin —
+the same message appeared when the package really was unusable, which masked
+the fix. To check a release, run `npx` from elsewhere (`cd /tmp`), or
+`npm run test-package`. Inside the repo, use `node bin/nhi-proxy.ts`.
+
 ## Scripts
 
 | Script | What it does |
