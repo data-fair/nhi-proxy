@@ -43,8 +43,11 @@ before(async () => {
       provider: { issuer: setup.issuer, jwks: await publicJwks(profileDir(profile)) }
     })
   })
-  assert.equal(res.status, 201, `NHI creation failed: ${res.status} ${await res.text()}`)
-  clientId = ((await res.json()) as any).id
+  // read the body once: passing `await res.text()` as an assertion message
+  // consumes it eagerly, even when the assertion passes
+  const body = await res.text()
+  assert.equal(res.status, 201, `NHI creation failed: ${res.status} ${body}`)
+  clientId = JSON.parse(body).id
 
   const config = { ...await readConfig(profile), clientId }
   await writeConfig(profile, config)
@@ -52,6 +55,8 @@ before(async () => {
   proxy = await startProxy({
     port: 0,
     targetHost: new URL(SITE).hostname,
+    targetSecure: new URL(SITE).protocol === 'https:',
+    targetPort: new URL(SITE).port ? Number(new URL(SITE).port) : undefined,
     ca: await loadCa(profileDir(profile)),
     session: new SessionHolder({ config, key, kid })
   })
@@ -70,8 +75,10 @@ test('a request through the proxy is authenticated as the NHI', async () => {
   const res = await fetch(`${SITE}${SD_PATH}/api/auth/me`, {
     dispatcher: new ProxyAgent(`http://127.0.0.1:${proxy.port}`)
   } as any)
-  assert.equal(res.status, 200)
-  const me = await res.json() as any
+  // read once: a 502 from nhi-local carries the diagnosis in its body
+  const raw = await res.text()
+  assert.equal(res.status, 200, `proxy returned ${res.status}: ${raw}`)
+  const me = JSON.parse(raw)
   assert.equal(me.id, clientId)
   assert.equal(me.nhi, 1, 'the session must carry the nhi flag')
   assert.ok(!me.isAdmin, 'an NHI is never admin')

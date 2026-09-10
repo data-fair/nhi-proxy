@@ -15,8 +15,12 @@ Install dependencies:
 Available scripts in `package.json`:
 
 - `npm test`: run the unit tests
-- `npm run test-e2e`: run the end-to-end test against a real simple-directory
-  (see [`test-e2e/README.md`](test-e2e/README.md) for the required environment)
+- `npm run e2e`: bring up an isolated simple-directory in Docker, seed it, and
+  run the end-to-end test — one command, no manual setup (see
+  [`test-e2e/README.md`](test-e2e/README.md))
+- `npm run e2e-stack` / `npm run e2e-stack-down`: manage that stack on its own
+- `npm run test-e2e`: run the end-to-end test against a stack you configured
+  yourself via `E2E_*` environment variables
 - `npm run lint` / `npm run lint-fix`: eslint
 - `npm run check-types`: tsc
 - `npm run quality`: all of the above

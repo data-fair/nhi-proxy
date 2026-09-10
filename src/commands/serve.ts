@@ -16,8 +16,16 @@ export const runServe = async (opts: { profile?: string, port?: number }) => {
   const { key, kid } = await loadSigningKey(dir)
   const ca = await loadCa(dir)
   const session = new SessionHolder({ config, key, kid })
-  const targetHost = new URL(config.site).hostname
-  const proxy = await startProxy({ port: opts.port ?? config.port, targetHost, ca, session })
+  const targetUrl = new URL(config.site)
+  const targetHost = targetUrl.hostname
+  const proxy = await startProxy({
+    port: opts.port ?? config.port,
+    targetHost,
+    targetSecure: targetUrl.protocol === 'https:',
+    targetPort: targetUrl.port ? Number(targetUrl.port) : undefined,
+    ca,
+    session
+  })
 
   console.log(`nhi-local proxying ${targetHost} on http://127.0.0.1:${proxy.port}`)
   console.log(`  profile   ${profile}`)

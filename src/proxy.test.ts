@@ -112,6 +112,52 @@ test('tunnels a non-target host without inspecting or re-signing it', async () =
   await proxy.close(); other.close()
 })
 
+// undici's ProxyAgent (and others) tunnel every scheme through CONNECT, so a
+// plain-http dev-stack target must not be met with a TLS handshake
+test('a CONNECT tunnel to a plain-http target carries clear HTTP', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b; id_token_org=myorg')
+
+  const up = http.createServer((req, res) => {
+    res.end(JSON.stringify({ url: req.url, cookie: req.headers.cookie ?? null }))
+  })
+  await new Promise<void>(resolve => up.listen(0, '127.0.0.1', resolve))
+  const upPort = (up.address() as any).port
+
+  // no upstreamOverride here on purpose: this exercises targetHost/targetPort,
+  // the path a real dev-stack target takes
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: '127.0.0.1',
+    targetSecure: false,
+    targetPort: upPort,
+    ca,
+    session: session as any
+  })
+
+  const body = await new Promise<string>((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1', port: proxy.port, method: 'CONNECT', path: `127.0.0.1:${upPort}`
+    })
+    req.on('connect', (_res, socket) => {
+      // speak HTTP directly over the tunnel: node's http.request insists on
+      // dialling the host itself rather than reusing a socket we hand it
+      socket.write('GET /api/auth/me HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')
+      let raw = ''
+      socket.on('data', c => { raw += c })
+      socket.on('end', () => resolve(raw.slice(raw.indexOf('\r\n\r\n') + 4)))
+      socket.on('error', reject)
+    })
+    req.on('error', reject)
+    req.end()
+  })
+
+  const parsed = JSON.parse(body)
+  assert.equal(parsed.url, '/api/auth/me')
+  assert.equal(parsed.cookie, 'id_token=a.b; id_token_org=myorg')
+  await proxy.close(); up.close()
+})
+
 test('a failed refresh returns 502 naming the cause, never an unauthenticated request', async () => {
   const ca = await freshCa()
   const session = stubSession(new Error('Local clock is 5m00s ahead of https://koumoul.com'))

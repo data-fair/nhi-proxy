@@ -273,6 +273,17 @@ the admin must update the binding by hand.
 - Out of scope: a malicious process running as your own user. See the caveat
   above.
 
+## Proving it works
+
+```bash
+npm run e2e
+```
+
+Brings up an isolated simple-directory in Docker, seeds it, and drives a real
+request through the proxy — asserting the response identifies the NHI, carries
+the `nhi` flag, and is not an admin. See
+[`test-e2e/README.md`](test-e2e/README.md).
+
 ## Documentation
 
 - [Design spec](docs/superpowers/specs/2026-09-10-nhi-local-design.md)

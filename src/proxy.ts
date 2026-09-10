@@ -12,6 +12,17 @@ export type ProxyOptions = {
   ca: CaBundle
   session: SessionHolder
   /**
+   * whether the target is reached over TLS. Defaults to true; set false for a
+   * plain-http dev stack, where a CONNECT tunnel carries clear HTTP and must
+   * NOT be met with a TLS handshake.
+   */
+  targetSecure?: boolean
+  /**
+   * port the target listens on. Defaults to 443/80 by scheme; a dev stack on
+   * `http://localhost:5690` needs it, or requests are dialled at port 80.
+   */
+  targetPort?: number
+  /**
    * test-only: send intercepted traffic here instead of the real target.
    * `ca` trusts a self-signed upstream; the real target is verified against
    * the system trust store, which is why this is not a production knob.
@@ -21,6 +32,8 @@ export type ProxyOptions = {
 
 export const startProxy = async (opts: ProxyOptions) => {
   const { targetHost, ca, session } = opts
+  const targetSecure = opts.targetSecure ?? true
+  const targetPort = opts.targetPort ?? (targetSecure ? 443 : 80)
 
   // requests arrive here already decrypted, either from an intercepted CONNECT
   // tunnel or as plain HTTP to the target
@@ -40,7 +53,7 @@ export const startProxy = async (opts: ProxyOptions) => {
     headers.cookie = mergeCookieHeader(req.headers.cookie, cookie)
     delete headers['proxy-connection']
 
-    const target = opts.upstreamOverride ?? { host: targetHost, port: secure ? 443 : 80 }
+    const target = opts.upstreamOverride ?? { host: targetHost, port: targetPort }
     const request = secure ? https.request : http.request
     const upstream = request({
       host: target.host,
@@ -70,7 +83,15 @@ export const startProxy = async (opts: ProxyOptions) => {
     }
   })
   mitm.on('request', (req, res) => {
-    handleIntercepted(req, res, true).catch(() => res.destroy())
+    handleIntercepted(req, res, targetSecure).catch(() => res.destroy())
+  })
+
+  // a CONNECT tunnel to a plain-http target carries clear HTTP, not TLS: some
+  // clients (undici's ProxyAgent among them) tunnel every scheme. Meeting those
+  // bytes with a TLS handshake just closes the socket with no explanation.
+  const plainMitm = http.createServer()
+  plainMitm.on('request', (req, res) => {
+    handleIntercepted(req, res, targetSecure).catch(() => res.destroy())
   })
 
   const proxy = http.createServer((req, res) => {
@@ -90,7 +111,7 @@ export const startProxy = async (opts: ProxyOptions) => {
       const parsed = new URL(req.url!)
       req.url = parsed.pathname + parsed.search
     } catch { /* already origin-form */ }
-    handleIntercepted(req, res, false).catch(() => res.destroy())
+    handleIntercepted(req, res, targetSecure).catch(() => res.destroy())
   })
 
   proxy.on('connect', (req, clientSocket, head) => {
@@ -112,9 +133,10 @@ export const startProxy = async (opts: ProxyOptions) => {
 
     clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
     if (head?.length) clientSocket.unshift(head)
-    // hand the raw socket to the TLS server, which completes the handshake
-    // with a certificate minted for the SNI name
-    mitm.emit('connection', clientSocket)
+    // hand the raw socket to the server that speaks what the client will send:
+    // TLS (completing the handshake with a certificate minted for the SNI name)
+    // for an https target, plain HTTP for an http one
+    ;(targetSecure ? mitm : plainMitm).emit('connection', clientSocket)
   })
 
   await new Promise<void>(resolve => proxy.listen(opts.port, '127.0.0.1', resolve))
@@ -125,6 +147,7 @@ export const startProxy = async (opts: ProxyOptions) => {
     close: async () => {
       await new Promise<void>(resolve => proxy.close(() => resolve()))
       await new Promise<void>(resolve => mitm.close(() => resolve()))
+      await new Promise<void>(resolve => plainMitm.close(() => resolve()))
     }
   }
 }
