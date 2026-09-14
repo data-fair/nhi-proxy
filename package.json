@@ -1,6 +1,6 @@
 {
   "name": "@data-fair/nhi-proxy",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Local NHI credential provider for agentic coding tools against a data-fair platform",
   "type": "module",
   "bin": {
