@@ -28,8 +28,11 @@ services:
       CONTACT: e2e@example.com
       # throwaway: this stack is ephemeral and never leaves the machine
       CIPHER_PASSWORD: nhi-proxy-e2e
-      # the auth limiter spends a point on every exchange, successful or not
-      # (5/minute by default), which a repeated test run exhausts immediately
+      # The auth limiter spends a point on every exchange, successful or not
+      # (5/minute by default), which repeated test runs exhaust. Raised so a
+      # re-run is not gated on the previous one's bucket — note this makes the
+      # limiter unobservable here, so the e2e test asserts the exchange count
+      # directly rather than waiting for a 429.
       AUTHRATELIMIT_ATTEMPTS: '1000'
       AUTHRATELIMIT_DURATION: '60'
 
