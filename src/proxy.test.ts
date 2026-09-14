@@ -280,3 +280,40 @@ test('appends to the cookies the upstream sets rather than replacing them', asyn
   assert.deepEqual(headers['set-cookie'], ['i18n_lang=fr; path=/', 'id_token=a.b; path=/'])
   await proxy.close(); up.server.close()
 })
+
+// server.close() fires its callback only once every connection has ended, and
+// a browser holds its CONNECT tunnels open with keep-alive. That left Ctrl+C
+// hanging with the port still bound. Note closeAllConnections() does not help
+// here: the tunnel socket is handed to the inner server with emit('connection'),
+// which bypasses the tracking that method walks — so the sockets are tracked
+// explicitly instead.
+test('close() returns even while a client holds an open tunnel', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b', ['id_token=a.b; path=/'])
+  const up = await upstream(ca, 'site.example.com')
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
+  })
+
+  const tunnel = await new Promise<net.Socket>((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1', port: proxy.port, method: 'CONNECT', path: 'site.example.com:443'
+    })
+    req.on('connect', (_res, socket) => resolve(socket))
+    req.on('error', reject)
+    req.end()
+  })
+
+  const outcome = await Promise.race([
+    proxy.close().then(() => 'closed'),
+    new Promise(resolve => setTimeout(() => resolve('hung'), 2000))
+  ])
+  assert.equal(outcome, 'closed', 'a held tunnel must not keep the daemon alive')
+
+  tunnel.destroy(); up.server.close()
+})

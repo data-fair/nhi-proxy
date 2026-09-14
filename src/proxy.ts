@@ -125,6 +125,18 @@ export const startProxy = async (opts: ProxyOptions) => {
     handleIntercepted(req, res, targetSecure).catch(() => res.destroy())
   })
 
+  // Every accepted socket, tracked so shutdown can force them closed.
+  // server.close() waits for connections to end on their own and a browser
+  // keeps its tunnels open, which is what left Ctrl+C hanging on a bound port.
+  // closeAllConnections() is not a substitute: a CONNECT socket is handed to
+  // the inner server with emit('connection'), bypassing the internal tracking
+  // that method walks, so neither server can destroy it on its own.
+  const sockets = new Set<net.Socket>()
+  proxy.on('connection', socket => {
+    sockets.add(socket)
+    socket.on('close', () => sockets.delete(socket))
+  })
+
   proxy.on('connect', (req, clientSocket, head) => {
     const [host, portStr] = req.url!.split(':')
     const port = Number(portStr || 443)
@@ -165,9 +177,15 @@ export const startProxy = async (opts: ProxyOptions) => {
   return {
     port,
     close: async () => {
-      await new Promise<void>(resolve => proxy.close(() => resolve()))
-      await new Promise<void>(resolve => mitm.close(() => resolve()))
-      await new Promise<void>(resolve => plainMitm.close(() => resolve()))
+      // stop accepting first, then cut the connections the callbacks are
+      // waiting on — in that order, or a client could slip in between
+      const closed = Promise.all([
+        new Promise<void>(resolve => proxy.close(() => resolve())),
+        new Promise<void>(resolve => mitm.close(() => resolve())),
+        new Promise<void>(resolve => plainMitm.close(() => resolve()))
+      ])
+      for (const socket of sockets) socket.destroy()
+      await closed
     }
   }
 }
