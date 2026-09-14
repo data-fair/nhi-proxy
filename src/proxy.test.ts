@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { generateCa, loadCa, certForHost, type CaBundle } from './ca.ts'
 import { startProxy } from './proxy.ts'
 
-// a SessionHolder-shaped stub; the proxy only needs cookieHeader/invalidate
+// a SessionHolder-shaped stub; the proxy reads cookieHeader and setCookie
 const stubSession = (header: string | Error, setCookie: string[] = []) => ({
   calls: 0,
   setCookie,

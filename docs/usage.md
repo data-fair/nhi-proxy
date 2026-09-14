@@ -185,7 +185,7 @@ to check.
 | `Local clock is 4m12s ahead of …` | Assertions live 120s, so drift alone rejects every exchange. Fix the system clock. |
 | `Exchange rejected by … (same 401 for every cause)` | Work the printed checklist: client_id, site origin, JWKS still matching, NHI still present. |
 | `nhi-proxy: …` in an HTTP 502 | A refresh failed *and* no unexpired session was left to fall back on. The proxy never forwards unauthenticated, so the cause is in the body. |
-| The SPA says you must be authenticated, but API calls work | Stale build: the proxy relays session cookies to the browser's own jar, which is what `@data-fair/lib-vue` reads. Check you are on 0.2.2+. |
+| The SPA says you must be authenticated, but API calls work | An older build. The proxy relays session cookies to the browser's own jar, which is what `@data-fair/lib-vue` reads; before it did, the API worked and the UI did not. Update. |
 
 After rotating a key with `nhi-proxy setup --rotate`, re-print the JWKS for your
 admin with `nhi-proxy status --jwks`. Inline JWKS has no refetch mechanism, so
