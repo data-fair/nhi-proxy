@@ -60,7 +60,12 @@ applicable. Injecting a Bearer header would silently do nothing. **The proxy
 must inject cookies.**
 
 **Sessions are capped and non-refreshable by construction.** `exp` is
-`min(assertion.exp, now + jwtDurations.nhiToken)`, default 30 minutes;
+`min(assertion.exp, now + jwtDurations.nhiToken)`. `nhiToken` defaults to 30
+minutes, but that cap is not what binds: our own assertion lives 120s (§4.1),
+so `min` resolves to the assertion and **a real session is about two minutes**.
+Both halves of that `min` are ours to set, and an earlier revision of this spec
+stated each correctly while sizing the refresh margin (§5) against the 30-minute
+branch that never applies — which is the whole of the exchange-per-request bug.
 `skipExchangeToken: true` means no exchange token and no server session exists,
 so no code path can renew one. A new session requires a new exchange.
 `keepalive` on an NHI session is an explicit no-op — it neither renews nor logs
@@ -81,7 +86,12 @@ costly, which shapes the rotation strategy (§5).
 **In scope — the realistic failure mode:**
 
 - No credential ever enters the model's context, transcripts, or tool output.
-- Sessions last at most 30 minutes and cannot be refreshed.
+- Sessions last about two minutes — `min(assertion.exp, nhiToken)`, and the
+  120s assertion is the binding half — and cannot be refreshed.
+- Session cookies do reach the browser's own jar (§4.3), so within that window
+  an `id_token` in a browser the agent drives authenticates against the site
+  without passing back through the proxy. Keeping the assertion short is what
+  bounds that.
 - The identity is scoped to exactly one organization, can never be `isAdmin`,
   and can never be an `asAdmin` impersonation target (enforced at both the
   storage and token layers in simple-directory).
@@ -124,8 +134,12 @@ Mints one assertion per exchange:
   jti: <random> }
 ```
 
-A two-minute lifetime bounds replay of a captured assertion to two minutes
-rather than the session's full thirty. `jti` is included for the issuer's own
+A two-minute lifetime bounds replay of a captured assertion to two minutes.
+It also bounds the session it buys, since the server takes the `min` of the two
+(§2) — the session is two minutes, never thirty. That is the intended trade:
+the cost is an exchange roughly every 80s under continuous use, well inside the
+limiter's 5/min, and the refresh margin must be derived from the session
+actually granted rather than assumed (§5). `jti` is included for the issuer's own
 logs; simple-directory does not track it (no replay protection beyond `exp` is
 inherent to RFC 7523 bearer exchange, and is documented as accepted upstream).
 
@@ -179,13 +193,25 @@ Lazy, with a margin:
 - On the first request after startup there is no session at all: exchange then,
   not at boot. Starting the daemon must not require the network to be up or the
   binding to be live yet.
-- Refresh when the held session has under 5 minutes left.
-- Refresh once on a `401` from upstream to a request we believed was
-  authenticated, then surface the failure rather than looping.
+- Refresh when under `min(5 minutes, a third of the session granted)` remains.
+  Relative, not absolute: a fixed margin larger than the session means nothing is
+  ever fresh, and every proxied request becomes an exchange. Reading it off each
+  response's `expires_in` also survives an operator running a smaller `nhiToken`.
+- Back off after a failed exchange — `Retry-After`, or 60s, the limiter's own
+  window. A failure spends a point too, so retrying per request keeps the bucket
+  empty for as long as traffic keeps arriving.
+- Keep serving a held session that has not expired when a refresh fails. It
+  still works, and a 502 in its place is a self-inflicted outage.
 - No background timer. The daemon may idle for hours between agent sessions,
   and every successful exchange consumes a rate-limiter point.
 
-At a 30-minute cap this is roughly two exchanges per hour of active use.
+At the real ~2-minute session this is an exchange roughly every 80s of
+*continuous* use — against a limiter allowing 5/min, keyed by IP and by
+`client_id` as two independent buckets. An idle daemon exchanges nothing.
+
+Not implemented: refreshing once on a `401` from upstream to a request we
+believed was authenticated. `SessionHolder.invalidate()` exists for it and is
+called from nowhere.
 
 **Refreshes are deduplicated behind a single in-flight promise.** A Playwright
 page issuing twenty parallel requests must trigger one exchange, not twenty —

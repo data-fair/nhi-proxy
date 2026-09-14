@@ -5,8 +5,11 @@ agent it serves.
 
 ## What it guarantees
 
-- The credential never enters the agent's context, transcripts, or tool output.
-- Sessions last at most 30 minutes and are non-refreshable by construction.
+- The signing key never enters the agent's context, transcripts, or tool output.
+- Sessions last about two minutes and are non-refreshable by construction. The
+  server caps them at `min(assertion.exp, jwtDurations.nhiToken)`, and since the
+  proxy's own assertion lives 120s it is the assertion, not the 30-minute
+  `nhiToken` default, that decides.
 - The identity is scoped to exactly one organization, can never be an admin, and
   can never be an impersonation target.
 - The proxy intercepts exactly one host. Every other CONNECT is tunnelled
@@ -14,6 +17,20 @@ agent it serves.
 - Out of scope: a malicious process running as your own user. See
   [the caveat](#the-caveat) below, which says plainly what key protection does
   and does not buy.
+
+## What reaches the browser
+
+The proxy relays the session's `Set-Cookie` to its client, not only to the
+upstream. It has to: `@data-fair/lib-vue` reads `document.cookie` to decide
+whether it is signed in, so without this a data-fair SPA renders as anonymous
+while every request it makes is authenticated.
+
+The consequence is worth stating plainly: a browser the agent drives holds an
+`id_token`, and that cookie authenticates against the site directly, without
+passing back through the proxy. It stops working when the session expires, which
+is why the assertion lifetime stays at 120s — it is what bounds this window. The
+key itself is still never exposed, and a token that dies in two minutes cannot
+outlive the daemon or move to another machine.
 
 ## Keeping the key away from your agent
 

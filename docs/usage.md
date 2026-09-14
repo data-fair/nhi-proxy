@@ -181,10 +181,11 @@ to check.
 | What you see | What it means |
 |---|---|
 | `NHI support is not enabled on …` | The deployment has `manageNhis` false. An operator must enable it. |
-| `Hit simple-directory's auth rate limit` | The limiter consumes a point on *every* exchange, keyed by IP and by client_id. Wait; if it recurs, an operator may need to raise `authRateLimit`. |
+| `Hit simple-directory's auth rate limit` | The limiter consumes a point on *every* exchange, keyed by IP and by client_id (two independent buckets of 5 per 60s). The proxy backs off for 60s rather than retrying per request, so this clears itself; if it recurs, an operator may need to raise `authRateLimit`. |
 | `Local clock is 4m12s ahead of …` | Assertions live 120s, so drift alone rejects every exchange. Fix the system clock. |
 | `Exchange rejected by … (same 401 for every cause)` | Work the printed checklist: client_id, site origin, JWKS still matching, NHI still present. |
-| `nhi-proxy: …` in an HTTP 502 | A refresh failed mid-session. The proxy never forwards unauthenticated, so the cause is in the body. |
+| `nhi-proxy: …` in an HTTP 502 | A refresh failed *and* no unexpired session was left to fall back on. The proxy never forwards unauthenticated, so the cause is in the body. |
+| The SPA says you must be authenticated, but API calls work | Stale build: the proxy relays session cookies to the browser's own jar, which is what `@data-fair/lib-vue` reads. Check you are on 0.2.2+. |
 
 After rotating a key with `nhi-proxy setup --rotate`, re-print the JWKS for your
 admin with `nhi-proxy status --jwks`. Inline JWKS has no refetch mechanism, so
