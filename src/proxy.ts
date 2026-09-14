@@ -3,7 +3,7 @@ import https from 'node:https'
 import net from 'node:net'
 import tls from 'node:tls'
 import { certForHost, type CaBundle } from './ca.ts'
-import { mergeCookieHeader } from './cookies.ts'
+import { mergeCookieHeader, clientNeedsSessionCookies } from './cookies.ts'
 import type { SessionHolder } from './session.ts'
 
 export type ProxyOptions = {
@@ -64,7 +64,18 @@ export const startProxy = async (opts: ProxyOptions) => {
       headers,
       ...(opts.upstreamOverride?.ca ? { ca: opts.upstreamOverride.ca } : {})
     }, upRes => {
-      res.writeHead(upRes.statusCode ?? 502, upRes.headers)
+      const resHeaders = { ...upRes.headers }
+      // Injecting into the request authenticates it but leaves the client's own
+      // jar empty. That is invisible to curl and fatal to a SPA: lib-vue reads
+      // the session straight out of document.cookie, so data-fair renders as
+      // anonymous over a fully authenticated session. Relay the exchange's
+      // Set-Cookie whenever the client is out of sync — appended to whatever
+      // the upstream sets for itself, never replacing it.
+      if (session.setCookie.length && clientNeedsSessionCookies(req.headers.cookie, cookie)) {
+        const upstreamSetCookie = upRes.headers['set-cookie'] ?? []
+        resHeaders['set-cookie'] = [...upstreamSetCookie, ...session.setCookie]
+      }
+      res.writeHead(upRes.statusCode ?? 502, resHeaders)
       upRes.pipe(res)
     })
     upstream.on('error', err => {
