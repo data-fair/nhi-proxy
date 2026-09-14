@@ -10,8 +10,9 @@ import { generateCa, loadCa, certForHost, type CaBundle } from './ca.ts'
 import { startProxy } from './proxy.ts'
 
 // a SessionHolder-shaped stub; the proxy only needs cookieHeader/invalidate
-const stubSession = (header: string | Error) => ({
+const stubSession = (header: string | Error, setCookie: string[] = []) => ({
   calls: 0,
+  setCookie,
   async cookieHeader () { this.calls++; if (header instanceof Error) throw header; return header },
   invalidate () {}
 })
@@ -22,10 +23,11 @@ const freshCa = async () => {
   return loadCa(dir)
 }
 
-const upstream = async (ca: CaBundle, hostname: string) => {
+const upstream = async (ca: CaBundle, hostname: string, ownSetCookie?: string[]) => {
   const { cert, key } = certForHost(ca, hostname)
   const server = https.createServer({ cert, key }, (req, res) => {
     res.setHeader('content-type', 'text/plain')
+    if (ownSetCookie) res.setHeader('set-cookie', ownSetCookie)
     res.end(JSON.stringify({ url: req.url, cookie: req.headers.cookie ?? null }))
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -33,8 +35,8 @@ const upstream = async (ca: CaBundle, hostname: string) => {
 }
 
 // CONNECT through the proxy, then speak TLS over the tunnel
-const throughProxy = (proxyPort: number, hostHeader: string, caPem: string, path = '/') =>
-  new Promise<string>((resolve, reject) => {
+const throughProxy = (proxyPort: number, hostHeader: string, caPem: string, path = '/', cookie?: string) =>
+  new Promise<{ body: string, headers: http.IncomingHttpHeaders }>((resolve, reject) => {
     const req = http.request({
       host: '127.0.0.1', port: proxyPort, method: 'CONNECT', path: hostHeader
     })
@@ -48,12 +50,12 @@ const throughProxy = (proxyPort: number, hostHeader: string, caPem: string, path
         servername: host,
         ca: caPem,
         path,
-        headers: { host },
+        headers: cookie ? { host, cookie } : { host },
         agent: false
       } as https.RequestOptions, res => {
         let b = ''
         res.on('data', c => { b += c })
-        res.on('end', () => resolve(b))
+        res.on('end', () => resolve({ body: b, headers: res.headers }))
       })
       tlsReq.on('error', reject)
       tlsReq.end()
@@ -77,7 +79,7 @@ test('injects session cookies into requests to the target host', async () => {
     upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
   })
 
-  const body = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem, '/api/v1/datasets')
+  const { body } = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem, '/api/v1/datasets')
   const parsed = JSON.parse(body)
   assert.equal(parsed.url, '/api/v1/datasets')
   assert.equal(parsed.cookie, 'id_token=a.b; id_token_org=myorg')
@@ -171,7 +173,7 @@ test('a failed refresh returns 502 naming the cause, never an unauthenticated re
     upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
   })
 
-  const body = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem)
+  const { body } = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem)
   assert.match(body, /nhi-proxy/)
   assert.match(body, /clock is 5m00s ahead/)
   await proxy.close(); up.server.close()
@@ -190,4 +192,128 @@ test('startProxy rejects when the port is taken, instead of crashing', async () 
     (err: any) => err.code === 'EADDRINUSE'
   )
   await new Promise<void>(resolve => squatter.close(() => resolve()))
+})
+
+// Injecting cookies upstream authenticates the request but leaves the client's
+// own jar empty. curl never notices; a SPA does nothing else — lib-vue decides
+// whether it is logged in by decoding document.cookie — so data-fair rendered
+// "vous devez être authentifié" over a fully authenticated session.
+const SESSION_SET_COOKIE = [
+  'id_token=a.b; path=/; samesite=lax',
+  'id_token_sign=sig; path=/; httponly',
+  'id_token_org=myorg; path=/'
+]
+
+test('relays the session Set-Cookie to a client whose jar is empty', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b; id_token_sign=sig; id_token_org=myorg', SESSION_SET_COOKIE)
+  const up = await upstream(ca, 'site.example.com')
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
+  })
+
+  const { headers } = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem)
+  assert.deepEqual(headers['set-cookie'], SESSION_SET_COOKIE)
+  await proxy.close(); up.server.close()
+})
+
+test('stays quiet when the client already holds the current session', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b; id_token_sign=sig; id_token_org=myorg', SESSION_SET_COOKIE)
+  const up = await upstream(ca, 'site.example.com')
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
+  })
+
+  const { headers } = await throughProxy(
+    proxy.port, 'site.example.com:443', ca.caCertPem, '/',
+    'id_token=a.b; id_token_sign=sig; id_token_org=myorg'
+  )
+  assert.equal(headers['set-cookie'], undefined, 'no need to resend what the client has')
+  await proxy.close(); up.server.close()
+})
+
+test('relays a refreshed session to a client still holding the previous one', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=FRESH; id_token_sign=sig; id_token_org=myorg', ['id_token=FRESH; path=/'])
+  const up = await upstream(ca, 'site.example.com')
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
+  })
+
+  const { headers } = await throughProxy(
+    proxy.port, 'site.example.com:443', ca.caCertPem, '/', 'id_token=STALE'
+  )
+  assert.deepEqual(headers['set-cookie'], ['id_token=FRESH; path=/'])
+  await proxy.close(); up.server.close()
+})
+
+test('appends to the cookies the upstream sets rather than replacing them', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b', ['id_token=a.b; path=/'])
+  const up = await upstream(ca, 'site.example.com', ['i18n_lang=fr; path=/'])
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
+  })
+
+  const { headers } = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem)
+  assert.deepEqual(headers['set-cookie'], ['i18n_lang=fr; path=/', 'id_token=a.b; path=/'])
+  await proxy.close(); up.server.close()
+})
+
+// server.close() fires its callback only once every connection has ended, and
+// a browser holds its CONNECT tunnels open with keep-alive. That left Ctrl+C
+// hanging with the port still bound. Note closeAllConnections() does not help
+// here: the tunnel socket is handed to the inner server with emit('connection'),
+// which bypasses the tracking that method walks — so the sockets are tracked
+// explicitly instead.
+test('close() returns even while a client holds an open tunnel', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b', ['id_token=a.b; path=/'])
+  const up = await upstream(ca, 'site.example.com')
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: up.port, ca: ca.caCertPem }
+  })
+
+  const tunnel = await new Promise<net.Socket>((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1', port: proxy.port, method: 'CONNECT', path: 'site.example.com:443'
+    })
+    req.on('connect', (_res, socket) => resolve(socket))
+    req.on('error', reject)
+    req.end()
+  })
+
+  const outcome = await Promise.race([
+    proxy.close().then(() => 'closed'),
+    new Promise(resolve => setTimeout(() => resolve('hung'), 2000))
+  ])
+  assert.equal(outcome, 'closed', 'a held tunnel must not keep the daemon alive')
+
+  tunnel.destroy(); up.server.close()
 })

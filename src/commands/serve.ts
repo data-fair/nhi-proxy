@@ -8,6 +8,8 @@ import { startProxy } from '../proxy.ts'
 import { wiringHelp, hardeningHelp } from '../wiring.ts'
 import { listProfiles, resolveProfile } from '../profiles.ts'
 
+const SHUTDOWN_GRACE_MS = 3000
+
 export const runServe = async (opts: { profile?: string, port?: number }) => {
   const profile = await resolveProfile(opts.profile)
   const config = await readConfig(profile)
@@ -64,7 +66,20 @@ export const runServe = async (opts: { profile?: string, port?: number }) => {
   }))
   console.log(hardeningHelp(configRoot()))
 
-  const shutdown = () => { proxy.close().then(() => process.exit(0), () => process.exit(1)) }
+  // Tracking sockets makes close() return promptly, but a shutdown must never
+  // be able to leave the daemon alive on a bound port whatever the cause, so
+  // the exit is also guarded: a second Ctrl+C goes immediately, and the timer
+  // covers the case where nobody is there to press it.
+  let shuttingDown = false
+  const shutdown = () => {
+    if (shuttingDown) process.exit(1)
+    shuttingDown = true
+    setTimeout(() => {
+      console.error(`nhi-proxy: shutdown did not complete within ${SHUTDOWN_GRACE_MS}ms, exiting anyway`)
+      process.exit(1)
+    }, SHUTDOWN_GRACE_MS).unref()
+    proxy.close().then(() => process.exit(0), () => process.exit(1))
+  }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
 }

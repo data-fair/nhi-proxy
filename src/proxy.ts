@@ -3,7 +3,7 @@ import https from 'node:https'
 import net from 'node:net'
 import tls from 'node:tls'
 import { certForHost, type CaBundle } from './ca.ts'
-import { mergeCookieHeader } from './cookies.ts'
+import { mergeCookieHeader, clientNeedsSessionCookies } from './cookies.ts'
 import type { SessionHolder } from './session.ts'
 
 export type ProxyOptions = {
@@ -64,7 +64,18 @@ export const startProxy = async (opts: ProxyOptions) => {
       headers,
       ...(opts.upstreamOverride?.ca ? { ca: opts.upstreamOverride.ca } : {})
     }, upRes => {
-      res.writeHead(upRes.statusCode ?? 502, upRes.headers)
+      const resHeaders = { ...upRes.headers }
+      // Injecting into the request authenticates it but leaves the client's own
+      // jar empty. That is invisible to curl and fatal to a SPA: lib-vue reads
+      // the session straight out of document.cookie, so data-fair renders as
+      // anonymous over a fully authenticated session. Relay the exchange's
+      // Set-Cookie whenever the client is out of sync — appended to whatever
+      // the upstream sets for itself, never replacing it.
+      if (session.setCookie.length && clientNeedsSessionCookies(req.headers.cookie, cookie)) {
+        const upstreamSetCookie = upRes.headers['set-cookie'] ?? []
+        resHeaders['set-cookie'] = [...upstreamSetCookie, ...session.setCookie]
+      }
+      res.writeHead(upRes.statusCode ?? 502, resHeaders)
       upRes.pipe(res)
     })
     upstream.on('error', err => {
@@ -114,6 +125,18 @@ export const startProxy = async (opts: ProxyOptions) => {
     handleIntercepted(req, res, targetSecure).catch(() => res.destroy())
   })
 
+  // Every accepted socket, tracked so shutdown can force them closed.
+  // server.close() waits for connections to end on their own and a browser
+  // keeps its tunnels open, which is what left Ctrl+C hanging on a bound port.
+  // closeAllConnections() is not a substitute: a CONNECT socket is handed to
+  // the inner server with emit('connection'), bypassing the internal tracking
+  // that method walks, so neither server can destroy it on its own.
+  const sockets = new Set<net.Socket>()
+  proxy.on('connection', socket => {
+    sockets.add(socket)
+    socket.on('close', () => sockets.delete(socket))
+  })
+
   proxy.on('connect', (req, clientSocket, head) => {
     const [host, portStr] = req.url!.split(':')
     const port = Number(portStr || 443)
@@ -154,9 +177,15 @@ export const startProxy = async (opts: ProxyOptions) => {
   return {
     port,
     close: async () => {
-      await new Promise<void>(resolve => proxy.close(() => resolve()))
-      await new Promise<void>(resolve => mitm.close(() => resolve()))
-      await new Promise<void>(resolve => plainMitm.close(() => resolve()))
+      // stop accepting first, then cut the connections the callbacks are
+      // waiting on — in that order, or a client could slip in between
+      const closed = Promise.all([
+        new Promise<void>(resolve => proxy.close(() => resolve())),
+        new Promise<void>(resolve => mitm.close(() => resolve())),
+        new Promise<void>(resolve => plainMitm.close(() => resolve()))
+      ])
+      for (const socket of sockets) socket.destroy()
+      await closed
     }
   }
 }
