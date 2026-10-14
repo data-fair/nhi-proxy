@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, X509Certificate, type KeyObject } from 'node:crypto'
 import { readSecret, writeSecret } from './paths.ts'
-import { caExtensions, createCertificate, leafExtensions, name, subjectOf } from './x509.ts'
+import { caExtensions, createCertificate, hasSubjectKeyId, leafExtensions, name, subjectOf } from './x509.ts'
 
 export type CaBundle = {
   caCertPem: string
@@ -15,39 +15,46 @@ const newKey = () => generateKeyPairSync('rsa', { modulusLength: 2048 }).private
 // PKCS#1, as node-forge wrote them, so existing and new profiles look alike
 const toPem = (key: KeyObject) => key.export({ type: 'pkcs1', format: 'pem' }) as string
 
+const issueCa = (caKey: KeyObject, subject: Buffer) => createCertificate({
+  serial: serial(),
+  issuer: subject,
+  subject,
+  notBefore: new Date(Date.now() - 60_000),
+  notAfter: new Date(Date.now() + 10 * 365 * 24 * 3600_000),
+  publicKey: caKey,
+  extensions: caExtensions(caKey)
+}, caKey)
+
 export const generateCa = async (dir: string) => {
   const caKey = newKey()
   // one leaf keypair reused for every certificate, so the SPKI pin is stable
   const leafKey = newKey()
 
-  const caName = name('nhi-proxy local CA')
-  const ca = createCertificate({
-    serial: serial(),
-    issuer: caName,
-    subject: caName,
-    notBefore: new Date(Date.now() - 60_000),
-    notAfter: new Date(Date.now() + 10 * 365 * 24 * 3600_000),
-    publicKey: caKey,
-    extensions: caExtensions
-  }, caKey)
-
   await writeSecret(dir, 'ca.key', toPem(caKey))
   await writeSecret(dir, 'leaf.key', toPem(leafKey))
   // the CA certificate is public: tools must read it to trust the proxy
-  await writeSecret(dir, 'ca.crt', ca)
+  await writeSecret(dir, 'ca.crt', issueCa(caKey, name('nhi-proxy local CA')))
 }
 
-export const loadCa = async (dir: string): Promise<CaBundle> => ({
-  caCertPem: await readSecret(dir, 'ca.crt'),
-  caKeyPem: await readSecret(dir, 'ca.key'),
-  leafKeyPem: await readSecret(dir, 'leaf.key'),
-  cache: new Map()
-})
+export const loadCa = async (dir: string): Promise<CaBundle> => {
+  let caCertPem = await readSecret(dir, 'ca.crt')
+  const caKeyPem = await readSecret(dir, 'ca.key')
+  // A CA from an earlier version lacks the key identifiers strict verifiers
+  // demand. Reissue it in place with the same key and subject: tools trust it
+  // by path, so they pick up the new certificate without being re-wired.
+  const der = new X509Certificate(caCertPem).raw
+  if (!hasSubjectKeyId(der)) {
+    caCertPem = issueCa(createPrivateKey(caKeyPem), subjectOf(der))
+    await writeSecret(dir, 'ca.crt', caCertPem)
+  }
+  return { caCertPem, caKeyPem, leafKeyPem: await readSecret(dir, 'leaf.key'), cache: new Map() }
+}
 
 export const certForHost = (ca: CaBundle, hostname: string) => {
   const hit = ca.cache.get(hostname)
   if (hit) return hit
 
+  const caKey = createPrivateKey(ca.caKeyPem)
   const cert = createCertificate({
     serial: serial(),
     issuer: subjectOf(new X509Certificate(ca.caCertPem).raw),
@@ -55,8 +62,8 @@ export const certForHost = (ca: CaBundle, hostname: string) => {
     notBefore: new Date(Date.now() - 60_000),
     notAfter: new Date(Date.now() + 397 * 24 * 3600_000),
     publicKey: createPrivateKey(ca.leafKeyPem),
-    extensions: leafExtensions(hostname)
-  }, createPrivateKey(ca.caKeyPem))
+    extensions: leafExtensions(hostname, caKey)
+  }, caKey)
 
   const result = { cert, key: ca.leafKeyPem }
   ca.cache.set(hostname, result)
