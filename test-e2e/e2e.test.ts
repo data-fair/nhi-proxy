@@ -3,7 +3,9 @@ import assert from 'node:assert'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ProxyAgent } from 'undici'
+// fetch from undici too: node's global fetch is its bundled undici, whose
+// dispatcher API need not match this ProxyAgent's major
+import { fetch, ProxyAgent } from 'undici'
 import { runSetup } from '../src/commands/setup.ts'
 import { readConfig, writeConfig } from '../src/config.ts'
 import { profileDir } from '../src/paths.ts'
