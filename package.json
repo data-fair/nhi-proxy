@@ -38,10 +38,10 @@
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@types/node": "^24.0.0",
-    "eslint": "^9.32.0",
+    "eslint": "^10.12.0",
     "husky": "^9.1.7",
     "mongodb": "^7.6.0",
-    "neostandard": "^0.12.0",
+    "neostandard": "^0.14.1",
     "typescript": "^5.8.3",
     "undici": "^7.0.0"
   }
