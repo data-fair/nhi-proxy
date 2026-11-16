@@ -56,6 +56,8 @@ const throughProxy = (proxyPort: number, hostHeader: string, caPem: string, path
         let b = ''
         res.on('data', c => { b += c })
         res.on('end', () => resolve({ body: b, headers: res.headers }))
+        // a response cut before its end must fail, not hang the test
+        res.on('close', () => { if (!res.complete) reject(new Error('response aborted')) })
       })
       tlsReq.on('error', reject)
       tlsReq.end()
@@ -316,4 +318,42 @@ test('close() returns even while a client holds an open tunnel', async () => {
   assert.equal(outcome, 'closed', 'a held tunnel must not keep the daemon alive')
 
   tunnel.destroy(); up.server.close()
+})
+
+// an upstream that dies after its headers left: the 502 path must not try to
+// write headers a second time — ERR_HTTP_HEADERS_SENT there is uncaught and
+// takes the whole proxy process down
+test('an upstream cut mid-response aborts that response and the proxy survives', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b')
+  const { cert, key } = certForHost(ca, 'site.example.com')
+  // the raw TCP socket under the TLS one: only it can send an RST
+  let raw: net.Socket | undefined
+  const up = https.createServer({ cert, key }, (req, res) => {
+    if (req.url === '/cut') {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-length': '1000' })
+      // a TCP reset, as a TLS connection cut mid-response produces: it errors
+      // the proxy's upstream request after the headers were already relayed
+      res.write('partial', () => raw?.resetAndDestroy())
+      return
+    }
+    res.end('ok')
+  })
+  up.on('connection', socket => { raw = socket as net.Socket })
+  await new Promise<void>(resolve => up.listen(0, '127.0.0.1', resolve))
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: (up.address() as any).port, ca: ca.caCertPem }
+  })
+
+  await assert.rejects(throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem, '/cut'))
+  // let the upstream error reach the proxy's handler before probing it
+  await new Promise(resolve => setTimeout(resolve, 100))
+  const { body } = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem, '/after')
+  assert.equal(body, 'ok')
+  await proxy.close(); up.close()
 })

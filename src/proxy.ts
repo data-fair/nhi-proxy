@@ -1,6 +1,7 @@
 import http from 'node:http'
 import https from 'node:https'
 import net from 'node:net'
+import { pipeline } from 'node:stream'
 import tls from 'node:tls'
 import { certForHost, type CaBundle } from './ca.ts'
 import { mergeCookieHeader, clientNeedsSessionCookies } from './cookies.ts'
@@ -76,9 +77,18 @@ export const startProxy = async (opts: ProxyOptions) => {
         resHeaders['set-cookie'] = [...upstreamSetCookie, ...session.setCookie]
       }
       res.writeHead(upRes.statusCode ?? 502, resHeaders)
-      upRes.pipe(res)
+      // pipeline, not pipe: an upstream cut mid-body (a TLS reset, a dropped
+      // connection) must abort the client response, not leave it hanging open
+      pipeline(upRes, res, () => {})
     })
     upstream.on('error', err => {
+      // once the upstream's headers are relayed a 502 can no longer be sent;
+      // writing it anyway throws ERR_HTTP_HEADERS_SENT outside any handler and
+      // kills the process. Cutting the response is the only honest signal left.
+      if (res.headersSent) {
+        res.destroy(err)
+        return
+      }
       res.writeHead(502, { 'content-type': 'text/plain' })
       res.end(`nhi-proxy: upstream request failed: ${err.message}\n`)
     })
