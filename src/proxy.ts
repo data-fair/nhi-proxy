@@ -43,6 +43,7 @@ export const startProxy = async (opts: ProxyOptions) => {
     try {
       cookie = await session.cookieHeader()
     } catch (err: any) {
+      if (res.destroyed) return
       // never forward unauthenticated: data-fair would answer 401 or a
       // logged-out HTML page and an agent would burn tokens interpreting it
       res.writeHead(502, { 'content-type': 'text/plain' })
@@ -65,6 +66,13 @@ export const startProxy = async (opts: ProxyOptions) => {
       headers,
       ...(opts.upstreamOverride?.ca ? { ca: opts.upstreamOverride.ca } : {})
     }, upRes => {
+      // the client may have hung up while the upstream was thinking (a browser
+      // navigation abandons every in-flight request): pipeline() throws
+      // synchronously on a destroyed destination, uncaught, killing the process
+      if (res.destroyed) {
+        upstream.destroy()
+        return
+      }
       const resHeaders = { ...upRes.headers }
       // Injecting into the request authenticates it but leaves the client's own
       // jar empty. That is invisible to curl and fatal to a SPA: lib-vue reads
@@ -82,6 +90,8 @@ export const startProxy = async (opts: ProxyOptions) => {
       pipeline(upRes, res, () => {})
     })
     upstream.on('error', err => {
+      // the client is gone, nobody is left to tell
+      if (res.destroyed) return
       // once the upstream's headers are relayed a 502 can no longer be sent;
       // writing it anyway throws ERR_HTTP_HEADERS_SENT outside any handler and
       // kills the process. Cutting the response is the only honest signal left.
@@ -91,6 +101,11 @@ export const startProxy = async (opts: ProxyOptions) => {
       }
       res.writeHead(502, { 'content-type': 'text/plain' })
       res.end(`nhi-proxy: upstream request failed: ${err.message}\n`)
+    })
+    // a client hanging up early cancels the upstream request too, rather than
+    // leaving data-fair to compute a response nobody will read
+    res.on('close', () => {
+      if (!res.writableFinished) upstream.destroy()
     })
     req.pipe(upstream)
   }

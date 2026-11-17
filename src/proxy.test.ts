@@ -357,3 +357,54 @@ test('an upstream cut mid-response aborts that response and the proxy survives',
   assert.equal(body, 'ok')
   await proxy.close(); up.close()
 })
+
+// a browser navigation abandons in-flight requests: the client response is
+// destroyed before the upstream answers. pipeline() throws synchronously on a
+// destroyed destination, and uncaught there it took the proxy process down.
+test('a client that cancels before the upstream answers does not kill the proxy', async () => {
+  const ca = await freshCa()
+  const session = stubSession('id_token=a.b')
+  const { cert, key } = certForHost(ca, 'site.example.com')
+  let upstreamClosed: () => void
+  const upstreamDone = new Promise<void>(resolve => { upstreamClosed = resolve })
+  let cancelClient: () => void
+  const up = https.createServer({ cert, key }, (req, res) => {
+    if (req.url === '/slow') {
+      // answer only once the client is gone
+      cancelClient()
+      res.on('close', () => upstreamClosed())
+      setTimeout(() => res.end('late'), 100)
+      return
+    }
+    res.end('ok')
+  })
+  await new Promise<void>(resolve => up.listen(0, '127.0.0.1', resolve))
+
+  const proxy = await startProxy({
+    port: 0,
+    targetHost: 'site.example.com',
+    ca,
+    session: session as any,
+    upstreamOverride: { host: '127.0.0.1', port: (up.address() as any).port, ca: ca.caCertPem }
+  })
+
+  await new Promise<void>(resolve => {
+    const req = http.request({ host: '127.0.0.1', port: proxy.port, method: 'CONNECT', path: 'site.example.com:443' })
+    req.on('connect', (_res, socket) => {
+      const tlsReq = https.request({
+        socket, servername: 'site.example.com', ca: ca.caCertPem, path: '/slow', headers: { host: 'site.example.com' }, agent: false
+      } as https.RequestOptions)
+      cancelClient = () => { tlsReq.destroy(); resolve() }
+      tlsReq.on('error', () => {})
+      tlsReq.end()
+    })
+    req.end()
+  })
+
+  // the upstream response finds the client gone; give it time to arrive
+  await new Promise(resolve => setTimeout(resolve, 300))
+  await upstreamDone
+  const { body } = await throughProxy(proxy.port, 'site.example.com:443', ca.caCertPem, '/after')
+  assert.equal(body, 'ok')
+  await proxy.close(); up.close()
+})
